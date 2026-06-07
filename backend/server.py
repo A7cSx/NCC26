@@ -221,6 +221,7 @@ async def submit_result(match_id: str, result: MatchResult):
             "result_b": result.result_b,
             "winner": r_winner,
             "status": "finished",
+            "finished_at": datetime.now(timezone.utc).isoformat(),
         }},
     )
     # Recompute points for all predictions on this match
@@ -245,10 +246,12 @@ async def admin_match_predictions(match_id: str):
 
 @api_router.get("/winners/latest")
 async def latest_winners():
-    """Returns the most recently finished match + all employees who scored points on it."""
-    finished = await db.matches.find({"status": "finished"}, {"_id": 0}).sort("kickoff", -1).to_list(1)
+    """Returns the most recently finished match (by finished_at, fallback to kickoff) + all employees who scored points on it."""
+    finished = await db.matches.find({"status": "finished"}, {"_id": 0}).to_list(2000)
     if not finished:
         return {"match": None, "winners": []}
+    # Sort by finished_at desc (if present), then kickoff desc
+    finished.sort(key=lambda m: (m.get("finished_at") or "", m.get("kickoff") or ""), reverse=True)
     match = finished[0]
     preds = await db.predictions.find(
         {"match_id": match["id"], "points": {"$gt": 0}}, {"_id": 0}
