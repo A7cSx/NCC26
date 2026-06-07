@@ -1,0 +1,111 @@
+{
+  "theme": "dark",
+  "archetype": "Performance Pro (Mix with Corporate Authority)",
+  "colors": {
+    "background": {
+      "base": "#0A1128",
+      "surface": "#121C3A",
+      "card": "#1A2547",
+      "overlay": "rgba(10, 17, 40, 0.85)"
+    },
+    "brand": {
+      "ncc_navy": "#1A2B6D",
+      "ncc_teal": "#2BB6C7",
+      "saudi_green": "#007A3D",
+      "gold": "#F5C518",
+      "silver": "#C0C0C0",
+      "bronze": "#CD7F32"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#94A3B8",
+      "accent": "#2BB6C7",
+      "success": "#007A3D",
+      "danger": "#EF4444"
+    },
+    "border": {
+      "default": "rgba(255, 255, 255, 0.1)",
+      "highlight": "rgba(43, 182, 199, 0.3)"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "english_primary": "'Outfit', sans-serif",
+      "arabic_primary": "'Cairo', sans-serif",
+      "numbers": "'Outfit', sans-serif"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight font-black",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-bold",
+      "h3": "text-xl sm:text-2xl font-bold",
+      "body": "text-base leading-relaxed text-slate-300",
+      "labels": "text-xs sm:text-sm tracking-[0.1em] uppercase text-slate-400 font-semibold"
+    }
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "p-4, p-6, p-8, p-12",
+    "container_padding": "px-4 sm:px-6 lg:px-8",
+    "grid_bento": "grid grid-cols-1 md:grid-cols-12 gap-6",
+    "rtl_support": "Use flex-row-reverse or dir='rtl' for Arabic language dynamically."
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#007A3D] text-white hover:bg-[#006C35] hover:-translate-y-1 transition-transform shadow-[0_0_15px_rgba(0,122,61,0.5)]",
+      "secondary": "bg-transparent border border-[#2BB6C7] text-[#2BB6C7] hover:bg-[#2BB6C7]/10",
+      "admin": "bg-[#1A2B6D] text-white hover:bg-[#1A2B6D]/80"
+    },
+    "cards": {
+      "match_card": "relative overflow-hidden bg-[#121C3A] border border-white/10 rounded-xl backdrop-blur-md transition-all hover:-translate-y-1 hover:border-white/20",
+      "prediction_slip": "bg-[#1A2547] border border-dashed border-white/20 rounded-lg p-6 relative before:absolute before:-left-3 before:top-1/2 before:w-6 before:h-6 before:bg-[#0A1128] before:rounded-full after:absolute after:-right-3 after:top-1/2 after:w-6 after:h-6 after:bg-[#0A1128] after:rounded-full",
+      "leaderboard_podium": "bg-gradient-to-t from-[#1A2B6D] to-[#121C3A] border-t-2 border-[#F5C518] rounded-t-lg flex flex-col items-center justify-end shadow-[0_-5px_20px_rgba(245,197,24,0.15)]"
+    },
+    "inputs": {
+      "text": "bg-[#0A1128] border border-white/10 focus:border-[#2BB6C7] focus:ring-1 focus:ring-[#2BB6C7] text-white rounded-md p-3",
+      "score_input": "w-16 h-16 text-center text-3xl font-bold bg-[#0A1128] border border-white/10 focus:border-[#007A3D] text-white rounded-lg mx-2 appearance-none"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-[#121C3A]/70 border border-white/10",
+    "textures": "Subtle noise overlay on the background to reduce flat digital feel.",
+    "hover_states": "Hover states must lighten background and translate-y-1 on cards. CTAs must glow.",
+    "icons": "lucide-react for UI icons. Custom SVG for flags/teams if needed."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.pexels.com/photos/15779126/pexels-photo-15779126.jpeg",
+        "category": "hero_background",
+        "description": "Aerial view of an illuminated sports stadium at night. Use as full-page background with heavy navy overlay."
+      },
+      {
+        "url": "https://customer-assets.emergentagent.com/job_world-cup-contest/artifacts/zdttaysn_unnamed.png",
+        "category": "brand_logo",
+        "description": "NCC Company Logo. Display prominently in header."
+      },
+      {
+        "url": "https://images.pexels.com/photos/6532364/pexels-photo-6532364.jpeg",
+        "category": "leaderboard_decoration",
+        "description": "Golden trophies. Use subtly in leaderboard or success screens."
+      },
+      {
+        "url": "https://images.pexels.com/photos/27915834/pexels-photo-27915834.jpeg",
+        "category": "card_accent",
+        "description": "Soccer balls on grass. Use for empty states or generic sports cards."
+      }
+    ]
+  },
+  "testing": {
+    "data_testid_rules": "All interactive elements, forms, inputs, and major sections MUST have 'data-testid' attributes (e.g., 'data-testid=\"login-submit-button\"', 'data-testid=\"match-card-1\"')."
+  },
+  "instructions_to_main_agent": [
+    "Ensure complete RTL support using dir='rtl' on the HTML tag or wrapper when Arabic is selected.",
+    "Add tailwind configuration for custom colors ncc-navy, ncc-teal, saudi-green, and gold.",
+    "Build a robust layout using the provided Deep Navy and Teal colors, with Saudi Green for the main CTAs.",
+    "Match cards should have a 'ticket' feel with dashed borders or cutouts.",
+    "Leaderboard must highlight the top 3 visually (Podium effect) using Gold, Silver, Bronze accents.",
+    "Registration is password-less, just Employee Name and Employee ID. Store context appropriately.",
+    "Use 'Outfit' font for English, and 'Cairo' for Arabic text. Ensure these are imported from Google Fonts.",
+    "Avoid standard generic Shadcn card looks. Customize Shadcn borders and backgrounds to match the glassy dark theme.",
+    "Admin panel needs to be simple, using the Swiss/High-contrast archetype for clarity."
+  ]
+}
