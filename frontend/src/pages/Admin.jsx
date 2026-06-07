@@ -7,12 +7,14 @@ import {
   adminSetStatus,
   adminDeleteMatch,
   adminMatchPredictions,
+  adminSetStreamUrl,
+  downloadAdminXlsx,
   setAdminPassword,
 } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { ShieldCheck, LogIn, Radio, RotateCcw, Trash2, Save, Eye, EyeOff, Users } from 'lucide-react';
+import { ShieldCheck, LogIn, Radio, RotateCcw, Trash2, Save, Eye, EyeOff, Users, FileDown, Tv } from 'lucide-react';
 import { toast } from 'sonner';
 
 const fmtDateTime = (iso, lang) => {
@@ -69,6 +71,8 @@ export default function Admin() {
       await adminSubmitResult(m.id, Number(e.a), Number(e.b));
       toast.success(t('admin.saved'));
       await load();
+      // Open celebration page in a new tab so admin can keep working
+      window.open(`/champions/${m.id}`, '_blank');
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Error');
     }
@@ -102,6 +106,30 @@ export default function Admin() {
     } catch (err) {
       toast.error('Error loading predictions');
     }
+  };
+
+  const onSaveStream = async (m, url) => {
+    try {
+      await adminSetStreamUrl(m.id, url);
+      toast.success(isAr ? 'تم حفظ رابط البث' : 'Stream URL saved');
+      await load();
+    } catch (err) {
+      toast.error('Error');
+    }
+  };
+
+  const exportMatch = async (m) => {
+    try {
+      await downloadAdminXlsx(`/admin/matches/${m.id}/export.xlsx`, `predictions_${m.team_a}_vs_${m.team_b}.xlsx`);
+      toast.success(isAr ? 'تم التنزيل' : 'Downloaded');
+    } catch { toast.error('Export failed'); }
+  };
+
+  const exportAll = async () => {
+    try {
+      await downloadAdminXlsx('/admin/predictions/export.xlsx', 'ncc_all_predictions.xlsx');
+      toast.success(isAr ? 'تم التنزيل' : 'Downloaded');
+    } catch { toast.error('Export failed'); }
   };
 
   if (!authed) {
@@ -143,6 +171,17 @@ export default function Admin() {
       </div>
       <h1 className="text-4xl font-black tracking-tighter">{isAr ? 'إدارة المسابقة' : 'Contest Console'}</h1>
       <p className="text-slate-400 mt-2">{t('admin.desc')}</p>
+
+      {/* Top action bar */}
+      <div className="mt-6 flex flex-wrap items-center gap-3" data-testid="admin-toolbar">
+        <Button onClick={exportAll} data-testid="export-all-btn" className="bg-saudi-green hover:bg-saudi-green-dark text-white font-bold rounded-md btn-glow">
+          <FileDown className={`w-4 h-4 ${isAr ? 'ml-2' : 'mr-2'}`} />
+          {isAr ? 'تنزيل جميع التوقعات (Excel)' : 'Download All Predictions (Excel)'}
+        </Button>
+        <div className="text-xs text-slate-500">
+          {isAr ? `إجمالي المباريات: ${matches.length}` : `Total matches: ${matches.length}`}
+        </div>
+      </div>
 
       <div className="mt-8 space-y-3">
         {matches.map(m => {
@@ -212,10 +251,26 @@ export default function Admin() {
                     {openPreds[m.id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     {openPreds[m.id] ? t('admin.hidePredictions') : t('admin.viewPredictions')}
                   </Button>
+                  <Button size="sm" variant="outline" onClick={() => exportMatch(m)} data-testid={`export-match-${m.id}`} className="border-saudi-green/40 text-emerald-300 hover:bg-saudi-green/10 hover:text-emerald-200">
+                    <FileDown className="w-4 h-4" /> Excel
+                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => onDelete(m)} className="text-red-400 hover:bg-red-500/10 hover:text-red-300">
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
+              </div>
+
+              {/* Stream URL row */}
+              <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-2" data-testid={`stream-row-${m.id}`}>
+                <Tv className="w-4 h-4 text-red-300 shrink-0" />
+                <Input
+                  defaultValue={m.stream_url || ''}
+                  placeholder={isAr ? 'رابط البث (YouTube) ...' : 'Stream URL (YouTube) ...'}
+                  className="bg-bg-base border-white/10 text-white h-9 text-sm flex-1"
+                  data-testid={`stream-input-${m.id}`}
+                  onKeyDown={(e) => { if (e.key === 'Enter') onSaveStream(m, e.target.value); }}
+                  onBlur={(e) => { if (e.target.value !== (m.stream_url || '')) onSaveStream(m, e.target.value); }}
+                />
               </div>
 
               {/* predictions table */}

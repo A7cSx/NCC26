@@ -10,6 +10,8 @@ import Matches from './pages/Matches';
 import MyPredictions from './pages/MyPredictions';
 import Leaderboard from './pages/Leaderboard';
 import Admin from './pages/Admin';
+import ChampionsCelebration from './pages/ChampionsCelebration';
+import Watch from './pages/Watch';
 import './App.css';
 
 const Layout = ({ children }) => {
@@ -38,6 +40,8 @@ function App() {
               <Route path="/matches" element={<Matches />} />
               <Route path="/my-predictions" element={<MyPredictions />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/champions/:matchId" element={<ChampionsCelebration />} />
+              <Route path="/watch/:matchId" element={<Watch />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
           </Layout>

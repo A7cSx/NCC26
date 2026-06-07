@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useI18n } from '../lib/i18n';
-import { Clock, CheckCircle2, Radio, Lock, Edit3 } from 'lucide-react';
+import { Clock, CheckCircle2, Radio, Lock, Edit3, Tv, MapPin } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 
@@ -18,16 +19,44 @@ const formatKickoff = (iso, lang) => {
   }
 };
 
+const useCountdown = (targetIso) => {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const target = (() => { try { return new Date(targetIso).getTime(); } catch { return null; } })();
+  if (!target) return null;
+  const lockMs = 5 * 60 * 1000;
+  const lockAt = target - lockMs;
+  const diffToLock = lockAt - now;
+  const diffToKickoff = target - now;
+  return { now, target, lockAt, lockMs, diffToLock, diffToKickoff };
+};
+
+const fmtCountdown = (ms, lang) => {
+  if (ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  if (d > 0) return lang === 'ar' ? `${d} يوم · ${pad(h)}:${pad(m)}:${pad(sec)}` : `${d}d · ${pad(h)}:${pad(m)}:${pad(sec)}`;
+  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+};
+
 export const MatchCard = ({ match, prediction, onPredict, index = 0 }) => {
   const { t, lang, isAr } = useI18n();
   const teamA = isAr ? (match.team_a_ar || match.team_a) : match.team_a;
   const teamB = isAr ? (match.team_b_ar || match.team_b) : match.team_b;
 
-  // Compute lock state: closes 5 minutes before kickoff
-  const lockMs = 5 * 60 * 1000;
-  const kickoffTs = (() => { try { return new Date(match.kickoff).getTime(); } catch { return null; } })();
-  const isLockedByTime = kickoffTs ? Date.now() >= (kickoffTs - lockMs) : false;
+  const cd = useCountdown(match.kickoff);
+  const isLockedByTime = cd ? cd.diffToLock <= 0 : false;
   const canPredict = match.status === 'upcoming' && !isLockedByTime;
+  const showCountdown = match.status === 'upcoming' && cd && cd.diffToKickoff > 0;
+  // urgency: less than 1 hour to lock
+  const urgent = cd && cd.diffToLock > 0 && cd.diffToLock < 3600 * 1000;
 
   const statusBadge = () => {
     if (match.status === 'live') return (
@@ -53,6 +82,11 @@ export const MatchCard = ({ match, prediction, onPredict, index = 0 }) => {
       style={{ animationDelay: `${index * 60}ms` }}
       data-testid={`match-card-${match.id}`}
     >
+      {/* Saudi-green accent for Saudi Arabia matches */}
+      {(match.team_a === 'Saudi Arabia' || match.team_b === 'Saudi Arabia') && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-saudi-green via-saudi-green to-transparent" />
+      )}
+
       {/* group pill */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
@@ -87,6 +121,49 @@ export const MatchCard = ({ match, prediction, onPredict, index = 0 }) => {
           <div className="font-bold text-base sm:text-lg truncate" data-testid={`team-b-${match.id}`}>{teamB}</div>
         </div>
       </div>
+
+      {/* live countdown */}
+      {showCountdown && (
+        <div
+          data-testid={`countdown-${match.id}`}
+          className={`mb-4 rounded-lg p-3 text-center border ${
+            urgent
+              ? 'border-red-500/50 bg-red-500/10 animate-glow-pulse'
+              : 'border-saudi-green/30 bg-saudi-green/5'
+          }`}
+        >
+          <div className="text-[9px] uppercase tracking-[0.3em] font-bold text-slate-400 mb-1">
+            {isLockedByTime
+              ? (isAr ? 'مغلق · بدء المباراة بعد' : 'Locked · Kickoff in')
+              : (isAr ? 'يُقفل بعد' : 'Locks in')}
+          </div>
+          <div className={`font-mono text-xl sm:text-2xl font-black tracking-tighter ${urgent ? 'text-red-300' : 'text-emerald-300'}`}>
+            {fmtCountdown(isLockedByTime ? cd.diffToKickoff : cd.diffToLock, lang)}
+          </div>
+        </div>
+      )}
+
+      {/* venue + stream link */}
+      {(match.venue || match.stream_url) && (
+        <div className="flex items-center gap-3 text-[11px] text-slate-400 mb-3">
+          {match.venue && (
+            <div className="flex items-center gap-1 truncate">
+              <MapPin className="w-3 h-3 shrink-0" />
+              <span className="truncate">{match.venue}</span>
+            </div>
+          )}
+          {match.stream_url && (
+            <Link
+              to={`/watch/${match.id}`}
+              className="flex items-center gap-1 text-red-300 hover:text-red-200 font-bold ms-auto"
+              data-testid={`watch-link-${match.id}`}
+            >
+              <Tv className="w-3 h-3" />
+              {isAr ? 'البث المباشر' : 'Watch live'}
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* prediction footer */}
       <div className="pt-4 border-t border-white/5">
@@ -132,11 +209,6 @@ export const MatchCard = ({ match, prediction, onPredict, index = 0 }) => {
         ) : (
           <div className="flex items-center justify-center text-slate-500 text-sm gap-2 py-1">
             <Lock className="w-4 h-4" /> {t('matches.locked')}
-          </div>
-        )}
-        {match.status === 'upcoming' && !isLockedByTime && (
-          <div className="mt-2 text-[10px] text-slate-500 text-center italic" data-testid={`lock-hint-${match.id}`}>
-            {t('matches.lockedSoon')}
           </div>
         )}
       </div>

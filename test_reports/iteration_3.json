@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration-3 verification complete. Backend: 17/17 new pytest pass (test_iteration3.py). Full suite: 38/39 (1 pre-existing iter-2 winners/latest test fails because the seed was reset to 72 matches across June 2026, so a manually-created past-kickoff finished test match no longer sorts as 'latest by kickoff' — design limitation already noted in iter-2 review, not a regression). Verified: 72 matches across groups A..L (6/group); Saudi Arabia is in Group H with Spain, Cape Verde and Uruguay, has 3 matches, Arabic 'السعودية' present, venue populated. POST /api/admin/matches/{id}/stream sets stream_url (admin auth required, 401 without, 404 for unknown id). GET /api/admin/matches/{id}/export.xlsx and /api/admin/predictions/export.xlsx return 200 with correct content-type, start with PK ZIP magic, parse via openpyxl, contain expected headers (Employee Name, Employee ID, Group, Points, English-formatted dates). Regression: registration, prediction submit (auto-derived winner), leaderboard, latest winners all still work. Frontend Playwright: /matches shows 71 live countdown tickers (data-testid=countdown-{id}) updating every second with 'يُقفل بعد' Arabic label; Saudi Arabia card visible with Saudi flag; /admin shows export-all-btn, 72 export-match-{id} buttons, 72 stream-input-{id} fields; stream URL saves on blur, /watch/{id} iframe receives the correct YouTube embed URL (https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1) — verified visually (Rick Astley video player rendered); /champions/{id} for finished match renders trophy headline 'إعلان أبطال المباراة', celebration-exact-{employee_id} card with name, employee_id, score 0-3, 5+ pts, نتيجة دقيقة badge, and CONFETTI firing.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/winners/latest", "issue": "Sorts by kickoff desc, not by result-submission time — pre-existing iter-2 known limitation. The iter-2 test_winners_after_result now fails because the fresh 72-match 2026 seed has many future-kickoff finished matches outranking ad-hoc test matches. Action: the iter-2 test needs to be updated to use a match with the latest future kickoff, OR the endpoint should track finished_at."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/test_reports/pytest/iteration3_results.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Update iter-2 test_winners_after_result to handle the new 72-match seed: create the test match with kickoff far in the future (e.g., 2027), or change /api/winners/latest to sort by a new finished_at timestamp.",
+    "(Cosmetic) The fallback text on /watch when no stream_url is set is 'البث المباشر غير متوفر بعد' — review_request mentioned 'Stream not available yet' which is the English equivalent and IS present in Watch.jsx for the LTR mode. No change needed; only flagging the exact wording."
+  ],
+  "critical_code_review_comments": [
+    "Stream URL endpoint correctly uses POST with query param (?stream_url=) and trims/empties to None — good pattern for empty-clearing semantics.",
+    "Watch.jsx places data-testid='stream-player' on the wrapper DIV (not the iframe itself). The container is always rendered; the iframe is conditionally inside. This is fine for the spec but means a strict 'iframe.stream-player' selector won't match — testing should query `[data-testid=stream-player] iframe` for iframe-specific checks.",
+    "_generate_group_stage_matches uses a deterministic but synthetic schedule (kickoff slots round-robin via counter % 4). It does NOT mirror the actual FIFA released schedule per-match — only the GROUPS/teams are official. If the user wants exact FIFA per-match kickoff times, they need to bake those into the seed.",
+    "Excel exports include `_fmt_en_datetime()` for full English dates (e.g., 'Wednesday, 17 June 2026, 08:30:42 PM (UTC)') — verified via openpyxl unit tests.",
+    "Auto-seed on startup is idempotent (count check before insert) — safe.",
+    "openpyxl is now a backend runtime dependency. Verified it's installed in the venv. If requirements.txt doesn't list it explicitly, add `openpyxl` to /app/backend/requirements.txt for production deployments."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3.py (new — 17 tests covering 72-match seed, Saudi Arabia in H, stream URL, XLSX exports, regression)"
+  ],
+  "success_rate": {
+    "backend": "100% on iter-3 tests (17/17). Full suite 38/39 (1 pre-existing iter-2 design-limitation test failure, not a regression).",
+    "frontend": "100% — all 6 new requirements verified visually + via Playwright (countdown ticker, Saudi card, /watch iframe with YouTube, /champions celebration, Admin Excel buttons, stream URL input save-on-blur)."
+  },
+  "test_credentials": "Admin password: ncc-admin-2026 (verified). Test employees TEST_I3_E_<run> created on the fly.",
+  "seed_data_creation": "No persistent seed data left — Stream URL is cleared after the test; test employee created via /api/auth/register remains but is harmless and clearly TEST_ prefixed. The leftover finished match Qatar vs Switzerland (0-3) and Mexico vs South Africa (0-3) from iter-1/iter-2 still exist and provided useful data points for /champions verification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test files: backend_test.py (iter-1 regression), test_iteration2.py (iter-2 lock + admin preds + winners; 1 test fails due to new seed kickoffs being in June 2026), test_iteration3.py (iter-3 new features, all pass). Run full suite: pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml. Frontend data-testids confirmed: countdown-{id}, stream-input-{id}, export-match-{id}, export-all-btn, stream-player (wrapper), celebration-exact-{employee_id}, celebration-winner-{employee_id}. /watch route auto-detects YouTube watch?v= and youtu.be URLs and converts to /embed/ format. /champions/{match_id} fires confetti on mount.",
+  "rca of the issue": "N/A — no blocking issues. The single pytest failure (test_iteration2::TestWinnersLatest::test_winners_after_result) is a stale test from iter-2 that assumed only a small handful of seeded matches; after the iter-3 seed replacement to 72 matches with future kickoffs (June 2026), the 'latest finished by kickoff desc' selection now picks a different match than the test's ad-hoc created one. This is NOT a regression in the application — the /api/winners/latest endpoint behavior is unchanged. Fix is to update the iter-2 test to either create its match with kickoff far in the future, or assert by employee winners rather than match id equality."
+}

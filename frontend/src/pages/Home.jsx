@@ -166,7 +166,8 @@ export default function Home() {
             {t('champions.empty')}
           </div>
         ) : (
-          <div className="glass rounded-2xl p-6 sm:p-8 border border-gold/30 bg-gradient-to-br from-saudi-green/5 to-transparent">
+          <Link to={`/champions/${latest.match.id}`} className="block group" data-testid="latest-champions-link">
+            <div className="glass rounded-2xl p-6 sm:p-8 border border-gold/30 bg-gradient-to-br from-saudi-green/5 to-transparent group-hover:border-gold/60 transition-colors">
             {/* Match recap header */}
             <div className="flex flex-wrap items-center justify-between gap-4 pb-6 mb-6 border-b border-white/10">
               <div className="flex items-center gap-3">
@@ -184,8 +185,8 @@ export default function Home() {
                 </div>
                 <div className="text-3xl">{latest.match.flag_b}</div>
               </div>
-              <div className="text-xs uppercase tracking-widest text-slate-400 font-bold">
-                {t('champions.finalResult')} · {t('common.group')} {latest.match.group}
+              <div className="text-xs uppercase tracking-widest text-gold font-bold flex items-center gap-2">
+                {isAr ? 'افتح صفحة الاحتفال' : 'Open celebration'} {arrow}
               </div>
             </div>
 
@@ -227,7 +228,8 @@ export default function Home() {
                 ))}
               </div>
             )}
-          </div>
+            </div>
+          </Link>
         )}
       </section>
 
