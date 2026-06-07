@@ -23,6 +23,12 @@ export const MatchCard = ({ match, prediction, onPredict, index = 0 }) => {
   const teamA = isAr ? (match.team_a_ar || match.team_a) : match.team_a;
   const teamB = isAr ? (match.team_b_ar || match.team_b) : match.team_b;
 
+  // Compute lock state: closes 5 minutes before kickoff
+  const lockMs = 5 * 60 * 1000;
+  const kickoffTs = (() => { try { return new Date(match.kickoff).getTime(); } catch { return null; } })();
+  const isLockedByTime = kickoffTs ? Date.now() >= (kickoffTs - lockMs) : false;
+  const canPredict = match.status === 'upcoming' && !isLockedByTime;
+
   const statusBadge = () => {
     if (match.status === 'live') return (
       <Badge className="bg-red-500/20 text-red-300 border border-red-500/40 gap-1.5" data-testid={`badge-live-${match.id}`}>
@@ -99,7 +105,7 @@ export const MatchCard = ({ match, prediction, onPredict, index = 0 }) => {
                   {prediction.points}
                 </div>
               </div>
-            ) : match.status === 'upcoming' ? (
+            ) : canPredict ? (
               <Button
                 onClick={() => onPredict?.(match)}
                 data-testid={`edit-pred-${match.id}`}
@@ -115,7 +121,7 @@ export const MatchCard = ({ match, prediction, onPredict, index = 0 }) => {
               </Badge>
             )}
           </div>
-        ) : match.status === 'upcoming' ? (
+        ) : canPredict ? (
           <Button
             onClick={() => onPredict?.(match)}
             data-testid={`predict-btn-${match.id}`}
@@ -126,6 +132,11 @@ export const MatchCard = ({ match, prediction, onPredict, index = 0 }) => {
         ) : (
           <div className="flex items-center justify-center text-slate-500 text-sm gap-2 py-1">
             <Lock className="w-4 h-4" /> {t('matches.locked')}
+          </div>
+        )}
+        {match.status === 'upcoming' && !isLockedByTime && (
+          <div className="mt-2 text-[10px] text-slate-500 text-center italic" data-testid={`lock-hint-${match.id}`}>
+            {t('matches.lockedSoon')}
           </div>
         )}
       </div>

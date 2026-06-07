@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../lib/i18n';
 import { useAuth } from '../lib/auth';
-import { listMatches, getLeaderboard, myPredictions } from '../lib/api';
+import { listMatches, latestWinners, myPredictions } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { MatchCard } from '../components/MatchCard';
 import { PredictionDialog } from '../components/PredictionDialog';
-import { Trophy, Target, Zap, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
+import { Trophy, Target, Zap, ArrowRight, Sparkles, Star, Flag } from 'lucide-react';
 
 const HERO_BG = 'https://images.pexels.com/photos/15779126/pexels-photo-15779126.jpeg';
 
@@ -15,13 +15,13 @@ export default function Home() {
   const { user } = useAuth();
   const [matches, setMatches] = useState([]);
   const [predictions, setPredictions] = useState([]);
-  const [leaderboard, setLeaderboard] = useState({ entries: [], finished_matches: 0 });
+  const [latest, setLatest] = useState({ match: null, winners: [] });
   const [openMatch, setOpenMatch] = useState(null);
 
   const load = async () => {
-    const [m, lb] = await Promise.all([listMatches(), getLeaderboard()]);
+    const [m, w] = await Promise.all([listMatches(), latestWinners()]);
     setMatches(m);
-    setLeaderboard(lb);
+    setLatest(w);
     if (user) {
       const preds = await myPredictions(user.employee_id);
       setPredictions(preds);
@@ -31,7 +31,6 @@ export default function Home() {
 
   const upcoming = useMemo(() => matches.filter(m => m.status === 'upcoming').slice(0, 3), [matches]);
   const nextMatch = upcoming[0];
-
   const predMap = useMemo(() => Object.fromEntries(predictions.map(p => [p.match_id, p])), [predictions]);
   const arrow = isAr ? '←' : '→';
 
@@ -40,7 +39,7 @@ export default function Home() {
       {/* HERO */}
       <section className="relative overflow-hidden">
         <div
-          className="absolute inset-0 opacity-25"
+          className="absolute inset-0 opacity-30"
           style={{
             backgroundImage: `url(${HERO_BG})`,
             backgroundSize: 'cover',
@@ -49,13 +48,18 @@ export default function Home() {
             WebkitMaskImage: 'linear-gradient(to bottom, black 30%, transparent 100%)',
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-bg-base/40 via-bg-base/80 to-bg-base" />
+        <div className="absolute inset-0 bg-gradient-to-b from-saudi-green/10 via-bg-base/85 to-bg-base" />
+        {/* Subtle Saudi-green glow */}
+        <div className="absolute -top-32 -right-32 w-96 h-96 bg-saudi-green/30 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-ncc-teal/20 rounded-full blur-3xl" />
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-32">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-ncc-teal/10 border border-ncc-teal/30 text-ncc-teal text-xs font-bold tracking-widest mb-6 animate-fade-up">
-              <Sparkles className="w-3.5 h-3.5" />
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-saudi-green/15 border border-saudi-green/40 text-emerald-300 text-xs font-bold tracking-widest mb-6 animate-fade-up">
+              <Star className="w-3.5 h-3.5 fill-current" />
               {t('hero.tagline')}
+              <span className="text-white/40">·</span>
+              <span>2026</span>
             </div>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-[1.05] animate-fade-up" style={{ animationDelay: '0.1s' }}>
               <span className="text-white">{t('hero.title')}</span>
@@ -89,21 +93,26 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Scoring strip */}
-          <div className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl animate-fade-up" style={{ animationDelay: '0.4s' }}>
-            {[
-              { icon: <Zap className="w-5 h-5" />, label: t('scoring.exact'), pts: t('scoring.exactPts'), color: 'text-gold border-gold/30' },
-              { icon: <Target className="w-5 h-5" />, label: t('scoring.winner'), pts: t('scoring.winnerPts'), color: 'text-ncc-teal border-ncc-teal/30' },
-              { icon: <ShieldCheck className="w-5 h-5" />, label: t('scoring.wrong'), pts: t('scoring.wrongPts'), color: 'text-slate-500 border-white/10' },
-            ].map((s, i) => (
-              <div key={i} className={`glass rounded-xl p-4 flex items-center gap-3 border ${s.color}`}>
-                {s.icon}
-                <div>
-                  <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{s.label}</div>
-                  <div className={`text-xl font-black`}>{s.pts}</div>
-                </div>
+          {/* Scoring strip - only 2 cards now (no wrong prediction) */}
+          <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl animate-fade-up" style={{ animationDelay: '0.4s' }}>
+            <div className="glass rounded-xl p-5 flex items-center gap-4 border border-gold/40 bg-gold/5">
+              <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
+                <Zap className="w-6 h-6 text-gold" />
               </div>
-            ))}
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{t('scoring.exact')}</div>
+                <div className="text-2xl font-black text-gold">{t('scoring.exactPts')}</div>
+              </div>
+            </div>
+            <div className="glass rounded-xl p-5 flex items-center gap-4 border border-saudi-green/40 bg-saudi-green/5">
+              <div className="w-12 h-12 rounded-full bg-saudi-green/20 flex items-center justify-center">
+                <Target className="w-6 h-6 text-emerald-300" />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{t('scoring.winner')}</div>
+                <div className="text-2xl font-black text-emerald-300">{t('scoring.winnerPts')}</div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -135,47 +144,89 @@ export default function Home() {
         </section>
       )}
 
-      {/* TOP PLAYERS */}
-      <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
+      {/* CHAMPIONS OF THE LATEST MATCH */}
+      <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24" data-testid="champions-section">
         <div className="flex items-end justify-between mb-6">
           <div>
-            <div className="text-xs uppercase tracking-[0.2em] text-gold font-bold mb-2">
-              {t('leaderboard.title')}
+            <div className="text-xs uppercase tracking-[0.2em] text-gold font-bold mb-2 flex items-center gap-2">
+              <Flag className="w-3.5 h-3.5" />
+              {t('champions.title')}
             </div>
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight">
-              {isAr ? 'أبطال الأسبوع' : 'Top Players'}
+              {t('champions.heading')}
             </h2>
           </div>
           <Link to="/leaderboard" className="text-sm text-gold hover:text-white transition-colors flex items-center gap-1 font-bold">
             {isAr ? 'الترتيب الكامل' : 'Full board'} <ArrowRight className={`w-4 h-4 ${isAr ? 'rotate-180' : ''}`} />
           </Link>
         </div>
-        {leaderboard.entries.length === 0 ? (
+
+        {!latest.match ? (
           <div className="glass rounded-2xl p-12 text-center text-slate-400">
-            {t('leaderboard.empty')}
+            {t('champions.empty')}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {leaderboard.entries.slice(0, 3).map((e, i) => {
-              const colors = ['border-gold text-gold bg-gold/5', 'border-silver text-slate-200 bg-white/5', 'border-bronze text-orange-300 bg-orange-500/5'];
-              const labels = [t('leaderboard.top1'), t('leaderboard.top2'), t('leaderboard.top3')];
-              return (
-                <div key={e.employee_id} className={`glass rounded-2xl p-6 border-t-4 ${colors[i]}`}>
-                  <div className="text-xs uppercase tracking-widest font-bold opacity-80">{labels[i]}</div>
-                  <div className="text-2xl font-black mt-2 text-white">{e.name}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">#{e.employee_id}</div>
-                  <div className="mt-4 flex items-end gap-4">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-widest text-slate-400">{t('leaderboard.points')}</div>
-                      <div className="text-4xl font-black text-white">{e.points}</div>
+          <div className="glass rounded-2xl p-6 sm:p-8 border border-gold/30 bg-gradient-to-br from-saudi-green/5 to-transparent">
+            {/* Match recap header */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-6 mb-6 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="text-3xl">{latest.match.flag_a}</div>
+                <div className="text-lg font-bold">
+                  {isAr ? (latest.match.team_a_ar || latest.match.team_a) : latest.match.team_a}
+                </div>
+                <div className="px-3 py-1 rounded-md bg-bg-base border border-white/10 font-black tracking-tighter">
+                  <span className={latest.match.winner === 'team_a' ? 'text-saudi-green' : 'text-white'}>{latest.match.result_a}</span>
+                  <span className="text-slate-500 mx-2">-</span>
+                  <span className={latest.match.winner === 'team_b' ? 'text-saudi-green' : 'text-white'}>{latest.match.result_b}</span>
+                </div>
+                <div className="text-lg font-bold">
+                  {isAr ? (latest.match.team_b_ar || latest.match.team_b) : latest.match.team_b}
+                </div>
+                <div className="text-3xl">{latest.match.flag_b}</div>
+              </div>
+              <div className="text-xs uppercase tracking-widest text-slate-400 font-bold">
+                {t('champions.finalResult')} · {t('common.group')} {latest.match.group}
+              </div>
+            </div>
+
+            {latest.winners.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                {isAr ? 'لا يوجد فائزون لهذه المباراة. حظ أوفر للمرة القادمة!' : 'No winners for this match — better luck next time!'}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {latest.winners.map((w, i) => (
+                  <div
+                    key={w.employee_id + i}
+                    data-testid={`champion-${w.employee_id}`}
+                    className={`rounded-xl p-4 border ${
+                      w.exact
+                        ? 'border-gold/50 bg-gold/5'
+                        : 'border-saudi-green/40 bg-saudi-green/5'
+                    } flex items-center gap-3 animate-fade-up`}
+                    style={{ animationDelay: `${i * 50}ms` }}
+                  >
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${
+                      w.exact ? 'bg-gold text-bg-base' : 'bg-saudi-green text-white'
+                    }`}>
+                      {w.exact ? <Zap className="w-5 h-5" /> : <Target className="w-5 h-5" />}
                     </div>
-                    <div className="text-xs text-slate-500 pb-1">
-                      ⚡ {e.exact_scores} · 🎯 {e.correct_winners}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold truncate">{w.name}</div>
+                      <div className="text-[10px] text-slate-500 tracking-wider">#{w.employee_id}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-2xl font-black ${w.exact ? 'text-gold' : 'text-emerald-300'}`}>
+                        +{w.points}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">
+                        {w.exact ? t('champions.exact') : t('champions.correct')}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>

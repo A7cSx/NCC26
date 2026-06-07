@@ -6,20 +6,31 @@ import {
   adminSubmitResult,
   adminSetStatus,
   adminDeleteMatch,
+  adminMatchPredictions,
   setAdminPassword,
 } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { ShieldCheck, LogIn, Radio, RotateCcw, Trash2, Save } from 'lucide-react';
+import { ShieldCheck, LogIn, Radio, RotateCcw, Trash2, Save, Eye, EyeOff, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
+const fmtDateTime = (iso, lang) => {
+  try {
+    return new Date(iso).toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-US', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+  } catch { return iso; }
+};
+
 export default function Admin() {
-  const { t, isAr } = useI18n();
+  const { t, lang, isAr } = useI18n();
   const [authed, setAuthed] = useState(false);
   const [pwd, setPwd] = useState(localStorage.getItem('ncc_admin_pwd') || '');
   const [matches, setMatches] = useState([]);
   const [editing, setEditing] = useState({}); // {match_id: {a, b}}
+  const [openPreds, setOpenPreds] = useState({}); // {match_id: [preds]}
 
   const tryAuth = async (password) => {
     setAdminPassword(password);
@@ -78,6 +89,19 @@ export default function Admin() {
     await adminDeleteMatch(m.id);
     toast.success('Deleted');
     await load();
+  };
+
+  const togglePredictions = async (m) => {
+    if (openPreds[m.id]) {
+      setOpenPreds(s => { const c = { ...s }; delete c[m.id]; return c; });
+      return;
+    }
+    try {
+      const data = await adminMatchPredictions(m.id);
+      setOpenPreds(s => ({ ...s, [m.id]: data.predictions }));
+    } catch (err) {
+      toast.error('Error loading predictions');
+    }
   };
 
   if (!authed) {
@@ -184,11 +208,63 @@ export default function Admin() {
                       <RotateCcw className="w-4 h-4" /> {t('admin.setUpcoming')}
                     </Button>
                   )}
+                  <Button size="sm" variant="outline" onClick={() => togglePredictions(m)} data-testid={`view-preds-${m.id}`} className="border-gold/40 text-gold hover:bg-gold/10 hover:text-gold">
+                    {openPreds[m.id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {openPreds[m.id] ? t('admin.hidePredictions') : t('admin.viewPredictions')}
+                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => onDelete(m)} className="text-red-400 hover:bg-red-500/10 hover:text-red-300">
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
+
+              {/* predictions table */}
+              {openPreds[m.id] && (
+                <div className="mt-4 pt-4 border-t border-white/10" data-testid={`preds-table-${m.id}`}>
+                  <div className="flex items-center gap-2 mb-3 text-xs uppercase tracking-widest text-gold font-bold">
+                    <Users className="w-4 h-4" />
+                    {openPreds[m.id].length} {isAr ? 'توقع' : 'predictions'}
+                  </div>
+                  {openPreds[m.id].length === 0 ? (
+                    <div className="text-slate-500 text-sm text-center py-6">{t('admin.noPredictions')}</div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-white/10">
+                      <table className="w-full text-sm">
+                        <thead className="bg-white/5">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold">{t('admin.colEmployee')}</th>
+                            <th className="px-3 py-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold">{t('admin.colId')}</th>
+                            <th className="px-3 py-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold text-center">{t('admin.colPrediction')}</th>
+                            <th className="px-3 py-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold">{t('admin.colSubmittedAt')}</th>
+                            <th className="px-3 py-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold text-right">{t('admin.colPoints')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {openPreds[m.id].map(p => (
+                            <tr key={p.id} className="border-t border-white/5" data-testid={`pred-row-${p.id}`}>
+                              <td className="px-3 py-2 font-bold">{p.employee_name}</td>
+                              <td className="px-3 py-2 text-slate-400 font-mono text-xs">#{p.employee_id}</td>
+                              <td className="px-3 py-2 text-center font-black tracking-tighter">
+                                {p.score_a} <span className="text-slate-500 mx-1">-</span> {p.score_b}
+                              </td>
+                              <td className="px-3 py-2 text-slate-400 text-xs">{fmtDateTime(p.created_at, lang)}</td>
+                              <td className="px-3 py-2 text-right">
+                                {m.status === 'finished' ? (
+                                  <span className={`font-black text-base ${p.points === 5 ? 'text-gold' : p.points === 3 ? 'text-emerald-300' : 'text-slate-500'}`}>
+                                    {p.points}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-600 text-xs">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

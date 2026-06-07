@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 ROOT_DIR = Path(__file__).parent
@@ -124,6 +124,22 @@ def determine_winner(a: int, b: int) -> str:
     return "draw"
 
 
+LOCK_MINUTES_BEFORE_KICKOFF = 5
+
+
+def is_locked(match: dict) -> bool:
+    """A match is locked for predictions if it's within LOCK_MINUTES_BEFORE_KICKOFF
+    of kickoff, or if the status is no longer 'upcoming'."""
+    if match.get("status") != "upcoming":
+        return True
+    try:
+        ko = datetime.fromisoformat(match["kickoff"].replace("Z", "+00:00"))
+    except Exception:
+        return False
+    lock_time = ko - timedelta(minutes=LOCK_MINUTES_BEFORE_KICKOFF)
+    return datetime.now(timezone.utc) >= lock_time
+
+
 # ---------- Auth / Employees ----------
 @api_router.post("/auth/register")
 async def register(payload: EmployeeCreate):
@@ -213,6 +229,44 @@ async def submit_result(match_id: str, result: MatchResult):
     return {"ok": True, "predictions_updated": len(preds)}
 
 
+@api_router.get("/admin/matches/{match_id}/predictions", dependencies=[Depends(verify_admin)])
+async def admin_match_predictions(match_id: str):
+    """Admin view: all predictions for a match with employee name, ID, and timestamp."""
+    preds = await db.predictions.find({"match_id": match_id}, {"_id": 0}).sort("created_at", 1).to_list(10000)
+    emp_ids = list({p["employee_id"] for p in preds})
+    emps = await db.employees.find({"employee_id": {"$in": emp_ids}}, {"_id": 0}).to_list(10000)
+    emp_map = {e["employee_id"]: e["name"] for e in emps}
+    for p in preds:
+        p["employee_name"] = emp_map.get(p["employee_id"], p["employee_id"])
+    return {"predictions": preds, "count": len(preds)}
+
+
+@api_router.get("/winners/latest")
+async def latest_winners():
+    """Returns the most recently finished match + all employees who scored points on it."""
+    finished = await db.matches.find({"status": "finished"}, {"_id": 0}).sort("kickoff", -1).to_list(1)
+    if not finished:
+        return {"match": None, "winners": []}
+    match = finished[0]
+    preds = await db.predictions.find(
+        {"match_id": match["id"], "points": {"$gt": 0}}, {"_id": 0}
+    ).sort("points", -1).to_list(10000)
+    emp_ids = list({p["employee_id"] for p in preds})
+    emps = await db.employees.find({"employee_id": {"$in": emp_ids}}, {"_id": 0}).to_list(10000)
+    emp_map = {e["employee_id"]: e["name"] for e in emps}
+    winners = []
+    for p in preds:
+        winners.append({
+            "employee_id": p["employee_id"],
+            "name": emp_map.get(p["employee_id"], p["employee_id"]),
+            "score_a": p["score_a"],
+            "score_b": p["score_b"],
+            "points": p["points"],
+            "exact": p["points"] == 5,
+        })
+    return {"match": match, "winners": winners}
+
+
 # ---------- Predictions ----------
 @api_router.post("/predictions")
 async def submit_prediction(payload: PredictionCreate):
@@ -222,8 +276,8 @@ async def submit_prediction(payload: PredictionCreate):
     match = await db.matches.find_one({"id": payload.match_id})
     if not match:
         raise HTTPException(404, "Match not found")
-    if match["status"] != "upcoming":
-        raise HTTPException(400, "Predictions are closed for this match")
+    if is_locked(match):
+        raise HTTPException(400, "Predictions are closed (locked 5 minutes before kickoff)")
     if payload.winner not in ("team_a", "team_b", "draw"):
         raise HTTPException(400, "Invalid winner")
     if payload.score_a < 0 or payload.score_b < 0 or payload.score_a > 30 or payload.score_b > 30:

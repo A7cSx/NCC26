@@ -51,3 +51,8 @@ export const adminCreateMatch = (data) =>
 export const adminDeleteMatch = (match_id) =>
   api.delete(`/admin/matches/${match_id}`).then(r => r.data);
 export const adminSeed = () => api.post('/admin/seed').then(r => r.data);
+export const adminMatchPredictions = (match_id) =>
+  api.get(`/admin/matches/${match_id}/predictions`).then(r => r.data);
+
+// ---- Winners ----
+export const latestWinners = () => api.get('/winners/latest').then(r => r.data);

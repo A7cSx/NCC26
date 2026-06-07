@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration-2 verifies the 6 new requirements end-to-end. Backend: 22/22 pytest pass (16 regression from iter-1 + 6 new). 5-minute lock rule verified deterministically (predict at +2min => 400 'locked'; +5min boundary => 400; +30min => 200). /api/admin/matches/{id}/predictions returns enriched predictions with employee_name, employee_id, ISO created_at; requires X-Admin-Password. /api/winners/latest returns latest finished match + sorted winners with exact=true for points=5 and exact=false for points=3. Frontend Playwright E2E: Home renders only 2 scoring cards (5 نقاط / 3 نقاط) with NO wrong-prediction card; champions-section visible and populated with champion-{employee_id} card showing name, employee_id (#…), score (0-3), +5 points and 'نتيجة دقيقة' badge; all 19 upcoming match cards show lock-hint-{id} with text 'يُقفل قبل ٥ دقائق من الانطلاق'; Saudi flag 🇸🇦 appears on Saudi card; Saudi-green theme dominates while NCC navy/teal accents are intact. Admin panel: all 20 matches show view-preds-{id} button; clicking expands preds-table-{id} with columns (employee name, #id, prediction, submitted-at, points) and pred-row-{id} entries; toggle hides table. No regressions found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iteration2.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "is_locked() uses '>=' against (kickoff - 5min) so exactly 5 min before kickoff IS locked — matches the 'close exactly 5 minutes before kickoff' requirement.",
+    "/api/winners/latest selects the finished match with the LATEST kickoff (not the latest result-submission time). For real World Cup ordering this is fine; if admin submits result for an older match later, that newer-finished result will NOT show as 'latest round'. Consider adding a 'finished_at' timestamp and sorting by it for true 'most recently announced' semantics.",
+    "/api/admin/matches/{match_id}/predictions sorts by created_at ascending but does not paginate — fine for an internal contest with <500 employees.",
+    "POST /api/predictions still allows updates AFTER initial submit as long as the match is unlocked. Spec says 'no editing, no resubmission' after lock — current code only blocks once locked, which is the correct interpretation; before-lock edits are still permitted (matches typical sportsbook UX).",
+    "admin_match_predictions does NOT include 'points' separately in the response but predictions docs already carry 'points' field — frontend correctly displays them.",
+    "Front-end Admin.jsx button label and column headers correctly read from i18n keys: admin.colEmployee/colId/colPrediction/colSubmittedAt/colPoints — verified visually."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py (new)"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% (all 6 new requirements verified)"},
+  "test_credentials": "Admin password: ncc-admin-2026. Iter2 backend tests use TEST_I2_E1_<run>/TEST_I2_E2_<run>. Iter2 frontend created employee E2E2-<ts>.",
+  "seed_data_creation": "Each iter2 test creates a custom match via POST /api/admin/matches (kickoff +2/+5/+30/+60 minutes) and deletes it in finally. No persistent test matches remain. Champions section showed residual finished match from iteration_1 (Mexico vs Canada, finished by TEST_E1_<hash>) — used as the live data point for the champions UI verification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests are in two files: /app/backend/tests/backend_test.py (regression, 16 tests) and /app/backend/tests/test_iteration2.py (6 new tests for lock, admin predictions, winners). Combined run: pytest /app/backend/tests/ -v. The Mexico-vs-Canada finished match (0-3) and TEST_E1_<hash> employee remain in the DB from iteration_1; if you need a fully clean state, POST /api/admin/reset with X-Admin-Password then restart backend. The 5-minute lock is enforced strictly (>= lock_time => locked) so create matches at least kickoff = now+6min to be able to submit predictions via UI in your tests. Frontend data-testids confirmed working: champions-section, champion-{employee_id}, lock-hint-{match_id}, view-preds-{match_id}, preds-table-{match_id}, pred-row-{prediction_id}, employee-id-input, name-input, register-submit.",
+  "rca of the issue": "N/A — no blocking issues found. All 6 new requirements implemented correctly; all iteration-1 functionality regression-tested and passing."
+}
