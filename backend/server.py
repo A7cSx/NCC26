@@ -29,12 +29,23 @@ class Employee(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     employee_id: str
     name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    notify_enabled: bool = True
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class EmployeeCreate(BaseModel):
     employee_id: str
     name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class EmployeeUpdate(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    notify_enabled: Optional[bool] = None
 
 
 class EmployeeLogin(BaseModel):
@@ -96,6 +107,28 @@ class PredictionCreate(BaseModel):
     score_b: int
 
 
+# Notification = a scheduled or fired reminder. Backend GET/POST endpoints expose this store.
+class Notification(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    match_id: str
+    title: str
+    body: str = ""
+    fire_at: str  # ISO datetime when the reminder should be shown
+    channel: str = "in_app"  # in_app | email | whatsapp | telegram
+    target: str = "all"  # "all" or specific employee_id
+    sent: bool = False
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class NotificationCreate(BaseModel):
+    match_id: str
+    title: str
+    body: str = ""
+    fire_at: str
+    channel: str = "in_app"
+    target: str = "all"
+
+
 # ---------- Helpers ----------
 def clean(doc):
     if doc is None:
@@ -151,8 +184,21 @@ async def register(payload: EmployeeCreate):
         raise HTTPException(400, "employee_id and name required")
     existing = await db.employees.find_one({"employee_id": eid})
     if existing:
+        # Optionally update email/phone if new ones provided
+        upd = {}
+        if payload.email and not existing.get("email"):
+            upd["email"] = payload.email.strip()
+        if payload.phone and not existing.get("phone"):
+            upd["phone"] = payload.phone.strip()
+        if upd:
+            await db.employees.update_one({"employee_id": eid}, {"$set": upd})
+            existing = await db.employees.find_one({"employee_id": eid})
         return clean(existing)
-    emp = Employee(employee_id=eid, name=name)
+    emp = Employee(
+        employee_id=eid, name=name,
+        email=(payload.email or "").strip() or None,
+        phone=(payload.phone or "").strip() or None,
+    )
     await db.employees.insert_one(emp.model_dump())
     return emp.model_dump()
 
@@ -165,10 +211,53 @@ async def login(payload: EmployeeLogin):
     return clean(emp)
 
 
+@api_router.patch("/employees/{employee_id}")
+async def update_employee(employee_id: str, payload: EmployeeUpdate):
+    """Update notification preferences and contact info."""
+    upd = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not upd:
+        raise HTTPException(400, "Nothing to update")
+    res = await db.employees.update_one({"employee_id": employee_id}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Employee not found")
+    emp = await db.employees.find_one({"employee_id": employee_id}, {"_id": 0})
+    return emp
+
+
 @api_router.get("/employees")
 async def list_employees():
     emps = await db.employees.find({}, {"_id": 0}).to_list(10000)
     return emps
+
+
+@api_router.get("/employees/{employee_id}")
+async def get_employee(employee_id: str):
+    emp = await db.employees.find_one({"employee_id": employee_id}, {"_id": 0})
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    return emp
+
+
+@api_router.get("/records/employee/{employee_id}")
+async def employee_records(employee_id: str):
+    """Comprehensive snapshot of an employee's records: profile, predictions count,
+    total points (finished matches only), exact/correct counts."""
+    emp = await db.employees.find_one({"employee_id": employee_id}, {"_id": 0})
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    preds = await db.predictions.find({"employee_id": employee_id}, {"_id": 0}).to_list(10000)
+    finished_ids = {m["id"] for m in await db.matches.find({"status": "finished"}, {"_id": 0, "id": 1}).to_list(2000)}
+    pts = sum(p.get("points", 0) for p in preds if p["match_id"] in finished_ids)
+    exact = sum(1 for p in preds if p.get("points", 0) == 5)
+    correct = sum(1 for p in preds if p.get("points", 0) == 3)
+    return {
+        "employee": emp,
+        "total_predictions": len(preds),
+        "points": pts,
+        "exact_scores": exact,
+        "correct_winners": correct,
+        "predictions": preds,
+    }
 
 
 # ---------- Matches ----------
@@ -272,9 +361,203 @@ async def latest_winners():
     return {"match": match, "winners": winners}
 
 
+# ---------- Stats ----------
+@api_router.get("/stats/teams")
+async def team_stats():
+    """Aggregate prediction stats per team across all matches:
+    how many employees predicted that team to win at least one match,
+    and total winning votes received across all matches.
+    """
+    preds = await db.predictions.find({}, {"_id": 0}).to_list(200000)
+    matches = await db.matches.find({}, {"_id": 0}).to_list(2000)
+    match_map = {m["id"]: m for m in matches}
+
+    # Aggregate: team_name -> {votes, employees_set, matches_set}
+    team_data = {}
+    for p in preds:
+        m = match_map.get(p["match_id"])
+        if not m:
+            continue
+        if p["winner"] == "team_a":
+            t_en = m["team_a"]
+            t_ar = m.get("team_a_ar", t_en)
+            flag = m.get("flag_a", "")
+        elif p["winner"] == "team_b":
+            t_en = m["team_b"]
+            t_ar = m.get("team_b_ar", t_en)
+            flag = m.get("flag_b", "")
+        else:
+            continue
+        td = team_data.setdefault(t_en, {
+            "team": t_en, "team_ar": t_ar, "flag": flag,
+            "votes": 0, "voters": set(), "matches": set(),
+        })
+        td["votes"] += 1
+        td["voters"].add(p["employee_id"])
+        td["matches"].add(p["match_id"])
+
+    items = []
+    for td in team_data.values():
+        items.append({
+            "team": td["team"],
+            "team_ar": td["team_ar"],
+            "flag": td["flag"],
+            "votes": td["votes"],
+            "unique_voters": len(td["voters"]),
+            "matches_predicted_in": len(td["matches"]),
+        })
+    items.sort(key=lambda x: (-x["votes"], -x["unique_voters"], x["team"]))
+    return {"teams": items, "total_predictions": len(preds)}
+
+
+@api_router.get("/stats/match/{match_id}")
+async def match_stats(match_id: str):
+    """Predictions breakdown for a match: votes for team_a / draw / team_b,
+    plus most-predicted score. Returns even for upcoming matches (shows 'crowd pick').
+    """
+    match = await db.matches.find_one({"id": match_id}, {"_id": 0})
+    if not match:
+        raise HTTPException(404, "Match not found")
+    preds = await db.predictions.find({"match_id": match_id}, {"_id": 0}).to_list(20000)
+    votes = {"team_a": 0, "draw": 0, "team_b": 0}
+    score_counts = {}
+    for p in preds:
+        votes[p["winner"]] = votes.get(p["winner"], 0) + 1
+        key = f"{p['score_a']}-{p['score_b']}"
+        score_counts[key] = score_counts.get(key, 0) + 1
+    total = len(preds)
+    popular_score = max(score_counts.items(), key=lambda x: x[1])[0] if score_counts else None
+    return {
+        "match_id": match_id,
+        "team_a": match["team_a"], "team_b": match["team_b"],
+        "total": total,
+        "votes": votes,
+        "pct": {
+            "team_a": round(votes["team_a"] * 100 / total, 1) if total else 0,
+            "draw": round(votes["draw"] * 100 / total, 1) if total else 0,
+            "team_b": round(votes["team_b"] * 100 / total, 1) if total else 0,
+        },
+        "popular_score": popular_score,
+        "popular_score_count": score_counts.get(popular_score, 0) if popular_score else 0,
+    }
+
+
+@api_router.get("/stats/overview")
+async def overview_stats():
+    """Top-level numbers for marketing strip / admin dashboard."""
+    employees = await db.employees.count_documents({})
+    predictions = await db.predictions.count_documents({})
+    matches_total = await db.matches.count_documents({})
+    finished = await db.matches.count_documents({"status": "finished"})
+    upcoming = await db.matches.count_documents({"status": "upcoming"})
+    return {
+        "employees": employees,
+        "predictions": predictions,
+        "matches_total": matches_total,
+        "matches_finished": finished,
+        "matches_upcoming": upcoming,
+    }
+
+
+# ---------- Notifications (virtual DB CRUD) ----------
+@api_router.get("/notifications")
+async def list_notifications(employee_id: Optional[str] = None, only_due: bool = False):
+    """List notifications. If employee_id is provided, returns ones targeting them or 'all'.
+    If only_due=true, returns only the ones whose fire_at is now-or-past and not yet marked sent.
+    """
+    q = {}
+    if employee_id:
+        q["target"] = {"$in": ["all", employee_id]}
+    items = await db.notifications.find(q, {"_id": 0}).sort("fire_at", 1).to_list(2000)
+    if only_due:
+        now = datetime.now(timezone.utc).isoformat()
+        items = [n for n in items if n["fire_at"] <= now and not n.get("sent")]
+    return items
+
+
+@api_router.post("/notifications")
+async def create_notification(payload: NotificationCreate):
+    """Create a notification record. Auto-creates the 30-min-before-kickoff reminder for a match."""
+    match = await db.matches.find_one({"id": payload.match_id})
+    if not match:
+        raise HTTPException(404, "Match not found")
+    n = Notification(**payload.model_dump())
+    await db.notifications.insert_one(n.model_dump())
+    return n.model_dump()
+
+
+@api_router.post("/notifications/{notification_id}/sent")
+async def mark_notification_sent(notification_id: str):
+    res = await db.notifications.update_one({"id": notification_id}, {"$set": {"sent": True}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Notification not found")
+    return {"ok": True}
+
+
+@api_router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: str):
+    await db.notifications.delete_one({"id": notification_id})
+    return {"ok": True}
+
+
+@api_router.post("/notifications/auto-schedule", dependencies=[Depends(verify_admin)])
+async def auto_schedule_match_reminders(minutes_before: int = 30):
+    """For each upcoming match, ensure a single 'kickoff reminder' notification exists
+    set to fire `minutes_before` minutes before kickoff."""
+    upcoming = await db.matches.find({"status": "upcoming"}, {"_id": 0}).to_list(2000)
+    created = 0
+    for m in upcoming:
+        try:
+            ko = datetime.fromisoformat(m["kickoff"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        fire_at = (ko - timedelta(minutes=minutes_before)).isoformat()
+        existing = await db.notifications.find_one({"match_id": m["id"], "title": {"$regex": "Kickoff reminder"}})
+        if existing:
+            await db.notifications.update_one(
+                {"id": existing["id"]},
+                {"$set": {"fire_at": fire_at, "sent": False}}
+            )
+            continue
+        n = Notification(
+            match_id=m["id"],
+            title="Kickoff reminder",
+            body=f"{m['team_a']} vs {m['team_b']} starts in {minutes_before} minutes",
+            fire_at=fire_at,
+            channel="in_app",
+            target="all",
+        )
+        await db.notifications.insert_one(n.model_dump())
+        created += 1
+    return {"ok": True, "created": created, "total_upcoming": len(upcoming)}
+
+
+@api_router.get("/notifications/upcoming-for-employee/{employee_id}")
+async def upcoming_for_employee(employee_id: str, window_minutes: int = 60):
+    """Return notifications relevant to this employee that fire within the next `window_minutes`.
+    Only matches the employee has predicted (to avoid noise)."""
+    preds = await db.predictions.find({"employee_id": employee_id}, {"_id": 0}).to_list(2000)
+    pred_match_ids = {p["match_id"] for p in preds}
+    now = datetime.now(timezone.utc)
+    until = (now + timedelta(minutes=window_minutes)).isoformat()
+    items = await db.notifications.find({
+        "match_id": {"$in": list(pred_match_ids)},
+        "target": {"$in": ["all", employee_id]},
+        "fire_at": {"$lte": until, "$gte": now.isoformat()},
+    }, {"_id": 0}).sort("fire_at", 1).to_list(500)
+    # Attach match info
+    if items:
+        mids = list({n["match_id"] for n in items})
+        matches = await db.matches.find({"id": {"$in": mids}}, {"_id": 0}).to_list(2000)
+        mmap = {m["id"]: m for m in matches}
+        for n in items:
+            n["match"] = mmap.get(n["match_id"])
+    return items
+
+
 # ---------- Predictions ----------
 @api_router.post("/predictions")
-async def submit_prediction(payload: PredictionCreate):
+async def create_prediction(payload: PredictionCreate):
     emp = await db.employees.find_one({"employee_id": payload.employee_id})
     if not emp:
         raise HTTPException(404, "Employee not registered")

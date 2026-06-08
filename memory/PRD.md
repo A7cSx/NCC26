@@ -16,15 +16,19 @@ A bilingual (Arabic/English) employee-only prediction contest for World Cup matc
 
 ## Implementation Status (Feb 2026)
 - [x] Backend models, CRUD, admin protected routes
-- [x] Auto-seed 20 World Cup 2026 matches
-- [x] Prediction submission with auto-derived winner; lock when status != upcoming
+- [x] Auto-seed 72 World Cup 2026 group-stage matches (12 groups A–L from official Dec 5, 2025 draw)
+- [x] Prediction submission with auto-derived winner; locks 5 minutes before kickoff
+- [x] **FIXED (Feb 2026)**: `POST /api/predictions` was missing decorator/`async def` — orphaned function body. Restored route.
 - [x] Admin result submission + automatic point recomputation (5 exact / 3 winner / 0 wrong)
 - [x] Anti-cheating leaderboard (only finished-match points)
+- [x] XLSX exports (per-match + all-predictions) using openpyxl
+- [x] Stream URL field on matches (`POST /api/admin/matches/{id}/stream`)
+- [x] Notifications collection + auto-schedule kickoff reminders
+- [x] Stats endpoints: `/stats/teams`, `/stats/match/{id}`, `/stats/overview`
+- [x] Winners-of-latest-finished-match endpoint
 - [x] Bilingual UI (AR default, EN toggle) with full RTL support
-- [x] Pages: Home (hero + scoring + upcoming + top3), Register, Matches (tabs), MyPredictions, Leaderboard (podium + table), Admin
-- [x] NCC logo + brand palette (navy/teal) mixed with Saudi green + gold accents
-- [x] Match-card "ticket" feel with glassmorphism
-- [x] testing_agent_v3 first iteration: 16/16 backend, 100% frontend
+- [x] Pages: Home, Register, Matches, MyPredictions, Leaderboard, Admin
+- [x] NCC logo + brand palette mixed with Saudi green + gold accents
 
 ## Core Requirements (Static)
 1. Q1 winner, Q2 exact score
