@@ -1,9 +1,12 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends, Request
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import re
 import logging
+import bcrypt
+import jwt
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -19,6 +22,9 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'ncc-admin-2026')
+JWT_SECRET = os.environ['JWT_SECRET']
+JWT_ALG = "HS256"
+JWT_TTL_DAYS = 7
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -28,28 +34,33 @@ api_router = APIRouter(prefix="/api")
 class Employee(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     employee_id: str
-    name: str
+    username: str
+    full_name: str
+    name: str  # kept for back-compat (= full_name)
+    password_hash: str
     email: Optional[str] = None
     phone: Optional[str] = None
     notify_enabled: bool = True
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class EmployeeCreate(BaseModel):
+class RegisterPayload(BaseModel):
+    full_name: str
+    username: str
     employee_id: str
-    name: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
+    password: str
+    confirm_password: str
+
+
+class LoginPayload(BaseModel):
+    username: str
+    password: str
 
 
 class EmployeeUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     notify_enabled: Optional[bool] = None
-
-
-class EmployeeLogin(BaseModel):
-    employee_id: str
 
 
 class Match(BaseModel):
@@ -134,6 +145,7 @@ def clean(doc):
     if doc is None:
         return None
     doc.pop('_id', None)
+    doc.pop('password_hash', None)
     return doc
 
 
@@ -141,6 +153,47 @@ def verify_admin(x_admin_password: str = Header(None)):
     if x_admin_password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
+
+
+def hash_password(pw: str) -> str:
+    return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(pw: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(pw.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def create_token(employee_id: str, username: str) -> str:
+    payload = {
+        "sub": employee_id,
+        "username": username,
+        "exp": datetime.now(timezone.utc) + timedelta(days=JWT_TTL_DAYS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+async def get_current_user(request: Request) -> dict:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "Not authenticated")
+    token = auth[7:]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "Invalid token")
+    emp = await db.employees.find_one({"employee_id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    if not emp:
+        raise HTTPException(401, "User not found")
+    return emp
+
+
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
 
 
 def compute_points(p_winner: str, p_a: int, p_b: int, r_winner: str, r_a: int, r_b: int) -> int:
@@ -177,38 +230,58 @@ def is_locked(match: dict) -> bool:
 
 # ---------- Auth / Employees ----------
 @api_router.post("/auth/register")
-async def register(payload: EmployeeCreate):
+async def register(payload: RegisterPayload):
+    full_name = payload.full_name.strip()
+    username = payload.username.strip().lower()
     eid = payload.employee_id.strip()
-    name = payload.name.strip()
-    if not eid or not name:
-        raise HTTPException(400, "employee_id and name required")
-    existing = await db.employees.find_one({"employee_id": eid})
-    if existing:
-        # Optionally update email/phone if new ones provided
-        upd = {}
-        if payload.email and not existing.get("email"):
-            upd["email"] = payload.email.strip()
-        if payload.phone and not existing.get("phone"):
-            upd["phone"] = payload.phone.strip()
-        if upd:
-            await db.employees.update_one({"employee_id": eid}, {"$set": upd})
-            existing = await db.employees.find_one({"employee_id": eid})
-        return clean(existing)
+    pw = payload.password
+    confirm = payload.confirm_password
+
+    if not full_name or len(full_name) < 3:
+        raise HTTPException(400, "FULL_NAME_REQUIRED")
+    if not USERNAME_RE.match(username):
+        raise HTTPException(400, "USERNAME_INVALID")
+    if not eid:
+        raise HTTPException(400, "EMPLOYEE_ID_REQUIRED")
+    if not pw or len(pw) < 6:
+        raise HTTPException(400, "PASSWORD_TOO_SHORT")
+    if pw != confirm:
+        raise HTTPException(400, "PASSWORD_MISMATCH")
+
+    if await db.employees.find_one({"username": username}):
+        raise HTTPException(409, "USERNAME_TAKEN")
+    if await db.employees.find_one({"employee_id": eid}):
+        raise HTTPException(409, "EMPLOYEE_ID_TAKEN")
+
     emp = Employee(
-        employee_id=eid, name=name,
-        email=(payload.email or "").strip() or None,
-        phone=(payload.phone or "").strip() or None,
+        employee_id=eid,
+        username=username,
+        full_name=full_name,
+        name=full_name,
+        password_hash=hash_password(pw),
     )
     await db.employees.insert_one(emp.model_dump())
-    return emp.model_dump()
+    token = create_token(eid, username)
+    user_out = emp.model_dump()
+    user_out.pop("password_hash", None)
+    return {"token": token, "user": user_out}
 
 
 @api_router.post("/auth/login")
-async def login(payload: EmployeeLogin):
-    emp = await db.employees.find_one({"employee_id": payload.employee_id.strip()})
+async def login(payload: LoginPayload):
+    username = payload.username.strip().lower()
+    emp = await db.employees.find_one({"username": username})
     if not emp:
-        raise HTTPException(404, "Employee not found")
-    return clean(emp)
+        raise HTTPException(401, "INVALID_CREDENTIALS")
+    if not verify_password(payload.password, emp.get("password_hash", "")):
+        raise HTTPException(401, "INVALID_CREDENTIALS")
+    token = create_token(emp["employee_id"], emp["username"])
+    return {"token": token, "user": clean(emp)}
+
+
+@api_router.get("/auth/me")
+async def auth_me(current=Depends(get_current_user)):
+    return current
 
 
 @api_router.patch("/employees/{employee_id}")
@@ -998,6 +1071,25 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def auto_seed():
     try:
+        # Clean up legacy employees missing username/password_hash (pre-auth migration)
+        legacy = await db.employees.count_documents({"$or": [
+            {"username": {"$exists": False}},
+            {"password_hash": {"$exists": False}},
+        ]})
+        if legacy:
+            await db.employees.delete_many({"$or": [
+                {"username": {"$exists": False}},
+                {"password_hash": {"$exists": False}},
+            ]})
+            # Also drop predictions for non-existent employees (orphan cleanup)
+            valid_ids = [e["employee_id"] async for e in db.employees.find({}, {"employee_id": 1, "_id": 0})]
+            await db.predictions.delete_many({"employee_id": {"$nin": valid_ids}})
+            logger.info(f"Migration: removed {legacy} legacy employees + orphan predictions")
+
+        # Unique indexes
+        await db.employees.create_index("username", unique=True)
+        await db.employees.create_index("employee_id", unique=True)
+
         count = await db.matches.count_documents({})
         if count == 0:
             docs = []

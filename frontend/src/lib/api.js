@@ -19,11 +19,26 @@ const stored = localStorage.getItem('ncc_admin_pwd');
 if (stored) setAdminPassword(stored);
 
 // ---- Auth ----
-export const register = (employee_id, name) =>
-  api.post('/auth/register', { employee_id, name }).then(r => r.data);
+const TOKEN_KEY = 'ncc_token';
+export const setAuthToken = (tok) => {
+  if (tok) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${tok}`;
+    localStorage.setItem(TOKEN_KEY, tok);
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+    localStorage.removeItem(TOKEN_KEY);
+  }
+};
+const _tok = localStorage.getItem(TOKEN_KEY);
+if (_tok) setAuthToken(_tok);
 
-export const login = (employee_id) =>
-  api.post('/auth/login', { employee_id }).then(r => r.data);
+export const register = (data) =>
+  api.post('/auth/register', data).then(r => r.data);
+
+export const login = (username, password) =>
+  api.post('/auth/login', { username, password }).then(r => r.data);
+
+export const me = () => api.get('/auth/me').then(r => r.data);
 
 // ---- Matches ----
 export const listMatches = () => api.get('/matches').then(r => r.data);

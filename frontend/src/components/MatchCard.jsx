@@ -4,20 +4,9 @@ import { useI18n } from '../lib/i18n';
 import { Clock, CheckCircle2, Radio, Lock, Edit3, Tv, MapPin } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { formatFullDate } from '../lib/dates';
 
-const formatKickoff = (iso, lang) => {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-US', {
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-};
+const formatKickoff = (iso, lang) => formatFullDate(iso, lang);
 
 const useCountdown = (targetIso) => {
   const [now, setNow] = useState(() => Date.now());

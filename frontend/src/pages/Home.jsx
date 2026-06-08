@@ -71,12 +71,19 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3 animate-fade-up" style={{ animationDelay: '0.3s' }}>
               {!user ? (
-                <Link to="/register" data-testid="hero-cta-register">
-                  <Button className="bg-saudi-green hover:bg-saudi-green-dark text-white font-black text-base px-8 py-6 rounded-full btn-glow">
-                    <Trophy className={`w-5 h-5 ${isAr ? 'ml-2' : 'mr-2'}`} />
-                    {t('hero.cta')}
-                  </Button>
-                </Link>
+                <>
+                  <Link to="/register" data-testid="hero-cta-register">
+                    <Button className="bg-saudi-green hover:bg-saudi-green-dark text-white font-black text-base px-8 py-6 rounded-full btn-glow">
+                      <Trophy className={`w-5 h-5 ${isAr ? 'ml-2' : 'mr-2'}`} />
+                      {t('hero.cta')}
+                    </Button>
+                  </Link>
+                  <Link to="/login" data-testid="hero-cta-login">
+                    <Button variant="outline" className="border-ncc-teal/40 text-ncc-teal hover:bg-ncc-teal/10 hover:text-emerald-300 font-bold px-6 py-6 rounded-full btn-glow-teal">
+                      {t('auth.goLogin')}
+                    </Button>
+                  </Link>
+                </>
               ) : (
                 <Link to="/matches" data-testid="hero-cta-matches">
                   <Button className="bg-saudi-green hover:bg-saudi-green-dark text-white font-black text-base px-8 py-6 rounded-full btn-glow">
@@ -85,11 +92,13 @@ export default function Home() {
                   </Button>
                 </Link>
               )}
-              <Link to="/matches">
-                <Button variant="outline" className="border-ncc-teal/40 text-ncc-teal hover:bg-ncc-teal/10 hover:text-ncc-teal font-bold px-6 py-6 rounded-full btn-glow-teal">
-                  {t('hero.ctaSecondary')} {arrow}
-                </Button>
-              </Link>
+              {user && (
+                <Link to="/matches">
+                  <Button variant="outline" className="border-ncc-teal/40 text-ncc-teal hover:bg-ncc-teal/10 hover:text-ncc-teal font-bold px-6 py-6 rounded-full btn-glow-teal">
+                    {t('hero.ctaSecondary')} {arrow}
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
 
@@ -136,7 +145,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {upcoming.map((m, i) => (
               <MatchCard key={m.id} match={m} prediction={predMap[m.id]} index={i} onPredict={(mm) => {
-                if (!user) { window.location.href = '/register'; return; }
+                if (!user) { window.location.href = '/login'; return; }
                 setOpenMatch(mm);
               }} />
             ))}

@@ -2,10 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { useI18n } from '../lib/i18n';
-import { Trophy } from 'lucide-react';
+import { Trophy, CalendarClock } from 'lucide-react';
 import { submitPrediction } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from 'sonner';
+import { formatFullDate } from '../lib/dates';
 
 export const PredictionDialog = ({ match, prediction, open, onOpenChange, onSaved }) => {
   const { t, isAr } = useI18n();
@@ -56,7 +57,11 @@ export const PredictionDialog = ({ match, prediction, open, onOpenChange, onSave
         <DialogHeader>
           <DialogTitle className="text-2xl font-black tracking-tight">{t('predict.title')}</DialogTitle>
           <DialogDescription className="text-slate-400">
-            {prediction ? t('predict.already') : ''}
+            <span className="flex items-center gap-1.5 text-xs">
+              <CalendarClock className="w-3.5 h-3.5 text-saudi-green" />
+              {formatFullDate(match.kickoff, isAr ? 'ar' : 'en')}
+            </span>
+            {prediction && <span className="block mt-1">{t('predict.already')}</span>}
           </DialogDescription>
         </DialogHeader>
 

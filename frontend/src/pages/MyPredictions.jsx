@@ -38,7 +38,7 @@ export default function MyPredictions() {
         <div className="text-xs uppercase tracking-[0.2em] text-ncc-teal font-bold">{t('nav.myPredictions')}</div>
       </div>
       <h1 className="text-4xl sm:text-5xl font-black tracking-tighter mb-8">
-        {isAr ? `أهلاً، ${user.name}` : `Hi, ${user.name}`}
+        {isAr ? `أهلاً، ${user.full_name || user.name}` : `Hi, ${user.full_name || user.name}`}
       </h1>
 
       {/* stats */}

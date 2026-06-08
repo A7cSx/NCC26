@@ -15,6 +15,15 @@ A bilingual (Arabic/English) employee-only prediction contest for World Cup matc
 - **Auth**: Passwordless employee registration. Admin via `X-Admin-Password` header (env `ADMIN_PASSWORD=ncc-admin-2026`).
 
 ## Implementation Status (Feb 2026)
+- [x] **Custom JWT auth (bcrypt + PyJWT)** — username + password
+  - Register fields: `full_name`, `username`, `employee_id`, `password`, `confirm_password`
+  - Login fields: `username` + `password`
+  - Returns `{ token, user }`; token persisted in `localStorage.ncc_token`; bearer auto-attached
+  - `/api/auth/me` for token validation; 7-day JWT expiry
+  - MongoDB unique indexes on `username` + `employee_id`
+  - One-time migration drops legacy passwordless accounts on startup
+- [x] **Header redesigned**: two CTAs (Login + Register) when logged out; user dropdown + logout when logged in. Saudi-green hairline accent.
+- [x] **Full English date formatting** everywhere (`Monday, June 15, 2026 at 1:30 PM`) via `/lib/dates.js`. Also used in PredictionDialog header.
 - [x] Backend models, CRUD, admin protected routes
 - [x] Auto-seed 72 World Cup 2026 group-stage matches (12 groups A–L from official Dec 5, 2025 draw)
 - [x] Prediction submission with auto-derived winner; locks 5 minutes before kickoff
@@ -22,13 +31,12 @@ A bilingual (Arabic/English) employee-only prediction contest for World Cup matc
 - [x] Admin result submission + automatic point recomputation (5 exact / 3 winner / 0 wrong)
 - [x] Anti-cheating leaderboard (only finished-match points)
 - [x] XLSX exports (per-match + all-predictions) using openpyxl
-- [x] Stream URL field on matches (`POST /api/admin/matches/{id}/stream`)
+- [x] Stream URL field on matches
 - [x] Notifications collection + auto-schedule kickoff reminders
-- [x] Stats endpoints: `/stats/teams`, `/stats/match/{id}`, `/stats/overview`
-- [x] Winners-of-latest-finished-match endpoint
 - [x] Bilingual UI (AR default, EN toggle) with full RTL support
-- [x] Pages: Home, Register, Matches, MyPredictions, Leaderboard, Admin
-- [x] NCC logo + brand palette mixed with Saudi green + gold accents
+- [x] Search box on Matches page (team EN/AR + group + venue)
+- [x] Pages: Home, Register, **Login**, Matches, MyPredictions, Leaderboard, Admin
+- [x] NCC logo + Saudi-green brand polish (header accent strip, auth-page glow halos)
 
 ## Core Requirements (Static)
 1. Q1 winner, Q2 exact score

@@ -16,15 +16,9 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { ShieldCheck, LogIn, Radio, RotateCcw, Trash2, Save, Eye, EyeOff, Users, FileDown, Tv } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatFullDate } from '../lib/dates';
 
-const fmtDateTime = (iso, lang) => {
-  try {
-    return new Date(iso).toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-US', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
-  } catch { return iso; }
-};
+const fmtDateTime = (iso, lang) => formatFullDate(iso, lang);
 
 export default function Admin() {
   const { t, lang, isAr } = useI18n();
