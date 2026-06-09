@@ -174,7 +174,6 @@ const AdminLogin = ({ onSuccess }) => {
               <Input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Rashed550011"
                 dir="ltr"
                 autoComplete="username"
                 data-testid="admin-username-input"
@@ -188,7 +187,6 @@ const AdminLogin = ({ onSuccess }) => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
                 dir="ltr"
                 autoComplete="current-password"
                 data-testid="admin-password-input"
