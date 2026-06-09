@@ -37,6 +37,21 @@ A bilingual (Arabic/English) employee-only prediction contest for World Cup matc
 - [x] Search box on Matches page (team EN/AR + group + venue)
 - [x] Pages: Home, Register, **Login**, Matches, MyPredictions, Leaderboard, Admin
 - [x] NCC logo + Saudi-green brand polish (header accent strip, auth-page glow halos)
+- [x] **(Feb 9, 2026) Trivia / Quiz feature ✨** — full World Cup Trivia game
+  - Backend: `/app/backend/trivia_routes.py` (factory-style router) + `/app/backend/trivia_seed.py` (82 questions seeded automatically on startup if collection empty)
+  - Collections: `trivia_questions`, `trivia_sessions`, `trivia_attempts`
+  - Question types: `text`, `image_face` (blurred until reveal), `image_jersey`, `image_trophy`
+  - Each session = 10 random questions (active=true), 40s per question
+  - Scoring: 10 pts correct + up to 5 pts speed bonus (if `time_taken_ms < 10_000`)
+  - Server strips `correct_index`/`explanation*` from public payload (anti-cheat)
+  - Endpoints: `POST /api/trivia/start`, `POST /api/trivia/answer`, `GET /api/trivia/leaderboard`, `GET /api/trivia/my-stats`
+  - Admin CRUD: `GET/POST /api/admin/trivia/questions`, `PUT/DELETE /api/admin/trivia/questions/{id}`, `POST /api/admin/trivia/questions/{id}/toggle`, `GET /api/admin/trivia/stats`
+  - Frontend page `/trivia` (`/app/frontend/src/pages/Trivia.jsx`): Intro → Play → Finished screens; PlayScreen owns its timer (keyed by qIdx)
+  - Home page CTA banner with purple/pink gradient; routes to `/login` for unauth users, `/trivia` for authed
+  - Admin tab "التحدي" inside `/admin` with stats cards + searchable/filterable list + add/edit modal supporting bilingual question text + 4 choices + image URL preview + active toggle + delete
+  - Header nav link with sparkle highlight visible only to logged-in users
+  - Bilingual: `trivia.*` keys in `/app/frontend/src/lib/i18n.jsx`
+  - 12/12 backend pytest pass (`/app/backend/tests/test_iteration4_trivia.py`); 16/16 frontend Playwright checkpoints pass
 
 ## Core Requirements (Static)
 1. Q1 winner, Q2 exact score
@@ -45,11 +60,13 @@ A bilingual (Arabic/English) employee-only prediction contest for World Cup matc
 4. Anti-cheat leaderboard updates only after admin closes a match
 5. AR/EN bilingual + RTL
 6. NCC brand mixed with national team colors
+7. World Cup Trivia engagement game (gated to logged-in users)
 
 ## Prioritized Backlog
 ### P1
 - WC knockout stage matches (round-of-16, QF, SF, Final) - currently group stage only
 - Match start countdown timer on cards
+- **Expand trivia bank**: current 82 questions → target 1500 (CSV/Excel bulk upload endpoint OR LLM-generated seeding)
 - Employee profile editing (current behavior keeps first name on idempotent register)
 
 ### P2
@@ -57,8 +74,12 @@ A bilingual (Arabic/English) employee-only prediction contest for World Cup matc
 - Push reminders via email/Telegram before each match
 - Department/team competitions
 - Export leaderboard to CSV/PDF for HR
+- Trivia leaderboard standalone page (currently inline preview on /trivia intro)
+- Trivia categories filter on player intro (Players / Tournaments / Records / General)
 
 ### P3
 - React Router navigate() instead of window.location for unauth predict click
 - POST /admin/matches/{id}/status accept JSON body instead of query param
 - Rate-limit /api/auth/register
+- Trivia image upload (currently URL-only) — backend file storage
+- Trivia pagination in admin list (currently capped at limit=1000)
