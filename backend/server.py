@@ -63,6 +63,22 @@ class EmployeeUpdate(BaseModel):
     notify_enabled: Optional[bool] = None
 
 
+# ---- Admin user (lives in `admins` collection) ----
+class AdminLoginPayload(BaseModel):
+    username: str
+    password: str
+
+
+class AdminCreatePayload(BaseModel):
+    username: str
+    full_name: str
+    password: str
+
+
+class AdminResetPasswordPayload(BaseModel):
+    new_password: str
+
+
 class Match(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     team_a: str
@@ -149,10 +165,26 @@ def clean(doc):
     return doc
 
 
-def verify_admin(x_admin_password: str = Header(None)):
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return True
+async def verify_admin(
+    request: Request,
+    x_admin_password: str = Header(None),
+):
+    # 1) Legacy: X-Admin-Password header (kept for back-compat & API tools)
+    if x_admin_password and x_admin_password == ADMIN_PASSWORD:
+        return {"role": "legacy", "username": "legacy"}
+    # 2) Modern: Bearer JWT issued by /api/admin/auth/login
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+            if payload.get("role") == "admin":
+                adm = await db.admins.find_one({"username": payload.get("username")})
+                if adm and adm.get("active", True):
+                    return {"role": "admin", "username": adm["username"], "full_name": adm.get("full_name", "")}
+        except jwt.PyJWTError:
+            pass
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def hash_password(pw: str) -> str:
@@ -166,10 +198,11 @@ def verify_password(pw: str, hashed: str) -> bool:
         return False
 
 
-def create_token(employee_id: str, username: str) -> str:
+def create_token(employee_id: str, username: str, role: str = "user") -> str:
     payload = {
         "sub": employee_id,
         "username": username,
+        "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(days=JWT_TTL_DAYS),
         "iat": datetime.now(timezone.utc),
     }
@@ -898,8 +931,208 @@ async def reset():
 
 
 @api_router.get("/admin/check")
-async def admin_check(x_admin_password: str = Header(None)):
-    return {"ok": x_admin_password == ADMIN_PASSWORD}
+async def admin_check(request: Request, x_admin_password: str = Header(None)):
+    """Check legacy password OR a bearer admin JWT."""
+    if x_admin_password and x_admin_password == ADMIN_PASSWORD:
+        return {"ok": True, "role": "legacy", "username": "legacy"}
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=[JWT_ALG])
+            if payload.get("role") == "admin":
+                return {"ok": True, "role": "admin", "username": payload.get("username")}
+        except jwt.PyJWTError:
+            pass
+    return {"ok": False}
+
+
+# ---------- Admin auth ----------
+@api_router.post("/admin/auth/login")
+async def admin_login(payload: AdminLoginPayload):
+    username = payload.username.strip()
+    adm = await db.admins.find_one({"username": username})
+    if not adm or not adm.get("active", True):
+        raise HTTPException(401, "INVALID_CREDENTIALS")
+    if not verify_password(payload.password, adm.get("password_hash", "")):
+        raise HTTPException(401, "INVALID_CREDENTIALS")
+    token = create_token(employee_id=adm["username"], username=adm["username"], role="admin")
+    return {
+        "token": token,
+        "admin": {
+            "username": adm["username"],
+            "full_name": adm.get("full_name", ""),
+            "role": "admin",
+        },
+    }
+
+
+@api_router.get("/admin/auth/me", dependencies=[Depends(verify_admin)])
+async def admin_me(current: dict = Depends(verify_admin)):
+    return current
+
+
+# ---------- Admin: User management ----------
+@api_router.get("/admin/users", dependencies=[Depends(verify_admin)])
+async def admin_list_users(q: Optional[str] = None):
+    """List all employees with derived stats (prediction count + total points)."""
+    query = {}
+    if q:
+        regex = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query = {"$or": [
+            {"full_name": regex}, {"username": regex}, {"employee_id": regex}
+        ]}
+    employees = await db.employees.find(query, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(2000)
+    # Aggregate predictions per user
+    pipeline = [
+        {"$group": {
+            "_id": "$employee_id",
+            "predictions_count": {"$sum": 1},
+            "total_points": {"$sum": {"$ifNull": ["$points", 0]}},
+            "last_prediction_at": {"$max": "$timestamp"},
+        }}
+    ]
+    pred_stats = {}
+    async for row in db.predictions.aggregate(pipeline):
+        pred_stats[row["_id"]] = {
+            "predictions_count": row["predictions_count"],
+            "total_points": row["total_points"],
+            "last_prediction_at": row.get("last_prediction_at"),
+        }
+    for e in employees:
+        stats = pred_stats.get(e["employee_id"], {"predictions_count": 0, "total_points": 0, "last_prediction_at": None})
+        e.update(stats)
+    return {"count": len(employees), "users": employees}
+
+
+@api_router.get("/admin/users/{employee_id}", dependencies=[Depends(verify_admin)])
+async def admin_get_user(employee_id: str):
+    emp = await db.employees.find_one({"employee_id": employee_id}, {"_id": 0, "password_hash": 0})
+    if not emp:
+        raise HTTPException(404, "User not found")
+    preds = await db.predictions.find({"employee_id": employee_id}, {"_id": 0}).sort("timestamp", -1).to_list(1000)
+    # Attach match summary to each prediction
+    match_ids = list({p["match_id"] for p in preds})
+    matches = {m["id"]: m async for m in db.matches.find({"id": {"$in": match_ids}}, {"_id": 0})}
+    for p in preds:
+        m = matches.get(p["match_id"])
+        if m:
+            p["match"] = {
+                "team_a": m.get("team_a"), "team_b": m.get("team_b"),
+                "team_a_ar": m.get("team_a_ar"), "team_b_ar": m.get("team_b_ar"),
+                "flag_a": m.get("flag_a"), "flag_b": m.get("flag_b"),
+                "status": m.get("status"), "kickoff": m.get("kickoff"),
+                "result_a": m.get("result_a"), "result_b": m.get("result_b"),
+                "winner": m.get("winner"), "group": m.get("group"),
+            }
+    total_points = sum(p.get("points", 0) for p in preds)
+    return {"user": emp, "predictions": preds, "total_points": total_points, "predictions_count": len(preds)}
+
+
+@api_router.delete("/admin/users/{employee_id}", dependencies=[Depends(verify_admin)])
+async def admin_delete_user(employee_id: str):
+    emp = await db.employees.find_one({"employee_id": employee_id})
+    if not emp:
+        raise HTTPException(404, "User not found")
+    pred_count = await db.predictions.count_documents({"employee_id": employee_id})
+    await db.predictions.delete_many({"employee_id": employee_id})
+    await db.employees.delete_one({"employee_id": employee_id})
+    return {"ok": True, "predictions_deleted": pred_count}
+
+
+@api_router.post("/admin/users/{employee_id}/reset-password", dependencies=[Depends(verify_admin)])
+async def admin_reset_user_password(employee_id: str, payload: AdminResetPasswordPayload):
+    if not payload.new_password or len(payload.new_password) < 6:
+        raise HTTPException(400, "PASSWORD_TOO_SHORT")
+    res = await db.employees.update_one(
+        {"employee_id": employee_id},
+        {"$set": {"password_hash": hash_password(payload.new_password)}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "User not found")
+    return {"ok": True}
+
+
+# ---------- Admin: All predictions feed ----------
+@api_router.get("/admin/predictions", dependencies=[Depends(verify_admin)])
+async def admin_list_all_predictions(
+    match_id: Optional[str] = None,
+    employee_id: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 500,
+):
+    query = {}
+    if match_id:
+        query["match_id"] = match_id
+    if employee_id:
+        query["employee_id"] = employee_id
+    if q:
+        regex = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"name": regex}, {"employee_id": regex}]
+    preds = await db.predictions.find(query, {"_id": 0}).sort("timestamp", -1).to_list(limit)
+    match_ids = list({p["match_id"] for p in preds})
+    emp_ids = list({p["employee_id"] for p in preds})
+    matches = {m["id"]: m async for m in db.matches.find({"id": {"$in": match_ids}}, {"_id": 0})}
+    employees = {e["employee_id"]: e async for e in db.employees.find({"employee_id": {"$in": emp_ids}}, {"_id": 0, "password_hash": 0})}
+    for p in preds:
+        m = matches.get(p["match_id"])
+        e = employees.get(p["employee_id"])
+        if m:
+            p["match"] = {
+                "team_a": m.get("team_a"), "team_b": m.get("team_b"),
+                "team_a_ar": m.get("team_a_ar"), "team_b_ar": m.get("team_b_ar"),
+                "flag_a": m.get("flag_a"), "flag_b": m.get("flag_b"),
+                "status": m.get("status"), "kickoff": m.get("kickoff"),
+                "result_a": m.get("result_a"), "result_b": m.get("result_b"),
+                "winner": m.get("winner"),
+            }
+        if e:
+            p["user"] = {
+                "full_name": e.get("full_name"), "username": e.get("username"),
+                "employee_id": e.get("employee_id"),
+            }
+    return {"count": len(preds), "predictions": preds}
+
+
+@api_router.delete("/admin/predictions/{prediction_id}", dependencies=[Depends(verify_admin)])
+async def admin_delete_prediction(prediction_id: str):
+    p = await db.predictions.find_one({"id": prediction_id})
+    if not p:
+        raise HTTPException(404, "Prediction not found")
+    await db.predictions.delete_one({"id": prediction_id})
+    return {"ok": True}
+
+
+# ---------- Admin: Dashboard stats ----------
+@api_router.get("/admin/dashboard", dependencies=[Depends(verify_admin)])
+async def admin_dashboard():
+    matches_total = await db.matches.count_documents({})
+    matches_upcoming = await db.matches.count_documents({"status": "upcoming"})
+    matches_live = await db.matches.count_documents({"status": "live"})
+    matches_finished = await db.matches.count_documents({"status": "finished"})
+    users_total = await db.employees.count_documents({})
+    preds_total = await db.predictions.count_documents({})
+    # Recent signups (last 10)
+    recent = await db.employees.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).limit(10).to_list(10)
+    # Top scorers (after finished match results applied)
+    top = await db.predictions.aggregate([
+        {"$group": {"_id": "$employee_id", "name": {"$first": "$name"}, "total_points": {"$sum": {"$ifNull": ["$points", 0]}}, "count": {"$sum": 1}}},
+        {"$sort": {"total_points": -1}},
+        {"$limit": 10},
+    ]).to_list(10)
+    return {
+        "matches": {"total": matches_total, "upcoming": matches_upcoming, "live": matches_live, "finished": matches_finished},
+        "users_total": users_total,
+        "predictions_total": preds_total,
+        "recent_signups": recent,
+        "top_scorers": top,
+    }
+
+
+# ---------- Admin: Manage other admins (super-admin only later) ----------
+@api_router.get("/admin/admins", dependencies=[Depends(verify_admin)])
+async def admin_list_admins():
+    rows = await db.admins.find({}, {"_id": 0, "password_hash": 0}).to_list(100)
+    return {"count": len(rows), "admins": rows}
 
 
 @api_router.post("/admin/matches/{match_id}/stream", dependencies=[Depends(verify_admin)])
@@ -1089,6 +1322,20 @@ async def auto_seed():
         # Unique indexes
         await db.employees.create_index("username", unique=True)
         await db.employees.create_index("employee_id", unique=True)
+        await db.admins.create_index("username", unique=True)
+
+        # Seed default admin (Rashed550011 / Rr@123123) if none exist
+        if await db.admins.count_documents({}) == 0:
+            await db.admins.insert_one({
+                "id": str(uuid.uuid4()),
+                "username": "Rashed550011",
+                "full_name": "Rashed (Super Admin)",
+                "password_hash": hash_password("Rr@123123"),
+                "role": "super_admin",
+                "active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.info("Seeded default admin: Rashed550011")
 
         count = await db.matches.count_documents({})
         if count == 0:
