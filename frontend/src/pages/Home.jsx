@@ -6,7 +6,7 @@ import { listMatches, latestWinners, myPredictions } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { MatchCard } from '../components/MatchCard';
 import { PredictionDialog } from '../components/PredictionDialog';
-import { Trophy, Target, Zap, ArrowRight, Sparkles, Star, Flag } from 'lucide-react';
+import { Trophy, Target, Zap, ArrowRight, Sparkles, Star, Flag, Brain } from 'lucide-react';
 
 const HERO_BG = 'https://images.pexels.com/photos/15779126/pexels-photo-15779126.jpeg';
 
@@ -240,6 +240,60 @@ export default function Home() {
             </div>
           </Link>
         )}
+      </section>
+
+      {/* TRIVIA CHALLENGE BANNER */}
+      <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20" data-testid="home-trivia-card">
+        <div className="relative glass rounded-3xl overflow-hidden border border-purple-400/30 group hover:border-purple-400/60 transition-colors">
+          {/* Animated gradient bg */}
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 via-pink-500/10 to-transparent" />
+          <div className="absolute -top-24 -right-24 w-64 h-64 bg-purple-500/30 rounded-full blur-3xl group-hover:bg-purple-500/50 transition-colors" />
+          <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-pink-500/20 rounded-full blur-3xl" />
+
+          <div className="relative px-6 sm:px-10 py-10 sm:py-14 flex flex-col md:flex-row items-center gap-8">
+            {/* Icon */}
+            <div className="relative shrink-0">
+              <div className="absolute inset-0 bg-purple-500/40 blur-2xl rounded-full" />
+              <div className="relative w-24 h-24 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 grid place-items-center shadow-xl shadow-purple-500/40 rotate-3 group-hover:rotate-6 transition-transform">
+                <Brain className="w-12 h-12 text-white" />
+              </div>
+            </div>
+
+            {/* Copy */}
+            <div className="flex-1 text-center md:text-start">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-200 text-[10px] font-bold tracking-widest mb-3">
+                <Sparkles className="w-3 h-3" />
+                {t('trivia.heroTagline')}
+                <span className="text-purple-400/60">·</span>
+                <span>NEW</span>
+              </div>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tighter mb-3">
+                {t('trivia.heroTitle')}
+              </h2>
+              <p className="text-slate-300 max-w-2xl text-sm sm:text-base leading-relaxed">
+                {t('trivia.heroDesc')}
+              </p>
+
+              <div className="mt-6 flex flex-wrap items-center justify-center md:justify-start gap-3">
+                {user ? (
+                  <Link to="/trivia" data-testid="home-trivia-cta">
+                    <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white font-black text-base px-8 py-6 rounded-full shadow-lg shadow-purple-500/30">
+                      <Sparkles className={`w-5 h-5 ${isAr ? 'ml-2' : 'mr-2'}`} />
+                      {t('trivia.heroCta')}
+                    </Button>
+                  </Link>
+                ) : (
+                  <Link to="/login" data-testid="home-trivia-cta-login">
+                    <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white font-black text-base px-8 py-6 rounded-full shadow-lg shadow-purple-500/30">
+                      <Sparkles className={`w-5 h-5 ${isAr ? 'ml-2' : 'mr-2'}`} />
+                      {t('trivia.heroLoginRequired')}
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <PredictionDialog

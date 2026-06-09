@@ -134,3 +134,23 @@ export const downloadAdminXlsx = async (path, filename) => {
 
 // ---- Winners ----
 export const latestWinners = () => api.get('/winners/latest').then(r => r.data);
+
+// ---- Trivia (user) ----
+export const triviaStart = () => api.post('/trivia/start').then(r => r.data);
+export const triviaAnswer = (data) => api.post('/trivia/answer', data).then(r => r.data);
+export const triviaLeaderboard = () => api.get('/trivia/leaderboard').then(r => r.data);
+export const triviaMyStats = () => api.get('/trivia/my-stats').then(r => r.data);
+
+// ---- Trivia (admin) ----
+export const adminTriviaList = (params = {}) =>
+  adminApi.get('/admin/trivia/questions', { params }).then(r => r.data);
+export const adminTriviaCreate = (payload) =>
+  adminApi.post('/admin/trivia/questions', payload).then(r => r.data);
+export const adminTriviaUpdate = (id, payload) =>
+  adminApi.put(`/admin/trivia/questions/${id}`, payload).then(r => r.data);
+export const adminTriviaDelete = (id) =>
+  adminApi.delete(`/admin/trivia/questions/${id}`).then(r => r.data);
+export const adminTriviaToggle = (id) =>
+  adminApi.post(`/admin/trivia/questions/${id}/toggle`).then(r => r.data);
+export const adminTriviaStats = () =>
+  adminApi.get('/admin/trivia/stats').then(r => r.data);

@@ -29,6 +29,9 @@ JWT_TTL_DAYS = 7
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+# Import trivia module (defined later in factory style to access shared deps)
+from trivia_routes import make_routes as make_trivia_routes  # noqa: E402
+
 
 # ---------- Models ----------
 class Employee(BaseModel):
@@ -1289,6 +1292,10 @@ async def root():
 
 app.include_router(api_router)
 
+# Mount trivia routes (uses shared db + auth helpers)
+trivia_router = make_trivia_routes(db, verify_admin, get_current_user)
+app.include_router(trivia_router, prefix="/api")
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -1336,6 +1343,16 @@ async def auto_seed():
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
             logger.info("Seeded default admin: Rashed550011")
+
+        # Auto-seed trivia questions if empty
+        tq_count = await db.trivia_questions.count_documents({})
+        if tq_count == 0:
+            from trivia_seed import SEED_QUESTIONS
+            from trivia_routes import TriviaQuestion
+            tq_docs = [TriviaQuestion(**spec).model_dump() for spec in SEED_QUESTIONS]
+            if tq_docs:
+                await db.trivia_questions.insert_many(tq_docs)
+                logger.info(f"Auto-seeded {len(tq_docs)} trivia questions")
 
         count = await db.matches.count_documents({})
         if count == 0:

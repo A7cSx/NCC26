@@ -13,6 +13,7 @@ import Leaderboard from './pages/Leaderboard';
 import Admin from './pages/Admin';
 import ChampionsCelebration from './pages/ChampionsCelebration';
 import Watch from './pages/Watch';
+import Trivia from './pages/Trivia';
 import './App.css';
 
 const Layout = ({ children }) => {
@@ -44,6 +45,7 @@ function App() {
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/champions/:matchId" element={<ChampionsCelebration />} />
               <Route path="/watch/:matchId" element={<Watch />} />
+              <Route path="/trivia" element={<Trivia />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
           </Layout>

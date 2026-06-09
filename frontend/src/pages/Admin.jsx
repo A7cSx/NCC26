@@ -19,6 +19,12 @@ import {
   adminDeletePrediction,
   adminDashboard,
   downloadAdminXlsx,
+  adminTriviaList,
+  adminTriviaCreate,
+  adminTriviaUpdate,
+  adminTriviaDelete,
+  adminTriviaToggle,
+  adminTriviaStats,
 } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -27,6 +33,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import {
   ShieldCheck, LogIn, LogOut, Radio, RotateCcw, Trash2, Save, Eye, EyeOff, Users,
   FileDown, Tv, KeyRound, Search, Activity, ListChecks, BarChart3, UserCheck, Trophy, Calendar,
+  Brain, Plus, Edit3, ImageIcon, Power,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatFullDate } from '../lib/dates';
@@ -118,12 +125,16 @@ export default function Admin() {
           <TabsTrigger value="predictions" data-testid="admin-tab-predictions" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white font-bold gap-1.5">
             <ListChecks className="w-4 h-4" /> {t('admin.tabPredictions')}
           </TabsTrigger>
+          <TabsTrigger value="trivia" data-testid="admin-tab-trivia" className="data-[state=active]:bg-pink-500 data-[state=active]:text-white font-bold gap-1.5">
+            <Brain className="w-4 h-4" /> {t('trivia.adminTab')}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard"><DashboardTab /></TabsContent>
         <TabsContent value="matches"><MatchesTab /></TabsContent>
         <TabsContent value="users"><UsersTab /></TabsContent>
         <TabsContent value="predictions"><PredictionsTab /></TabsContent>
+        <TabsContent value="trivia"><TriviaTab /></TabsContent>
       </Tabs>
     </div>
   );
@@ -788,6 +799,368 @@ const MatchesTab = () => {
           </div>
         );
       })}
+    </div>
+  );
+};
+
+
+/* ============ TRIVIA TAB ============ */
+const emptyQ = {
+  question: '', question_ar: '',
+  choices: ['', '', '', ''], choices_ar: ['', '', '', ''],
+  correct_index: 0,
+  type: 'text',
+  image_url: '',
+  category: 'general',
+  difficulty: 'medium',
+  explanation_ar: '',
+  active: true,
+};
+
+const TriviaTab = () => {
+  const { t, isAr } = useI18n();
+  const [items, setItems] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [search, setSearch] = useState('');
+  const [type, setType] = useState('');
+  const [active, setActive] = useState('');
+  const [editing, setEditing] = useState(null); // question being edited (or new)
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    try {
+      const params = { limit: 200 };
+      if (search) params.q = search;
+      if (type) params.type = type;
+      if (active !== '') params.active = active;
+      const res = await adminTriviaList(params);
+      setItems(res.items || res.questions || []);
+      const s = await adminTriviaStats();
+      setStats(s);
+    } catch { toast.error('Error'); }
+  };
+  // eslint-disable-next-line
+  useEffect(() => { load(); }, []);
+
+  const onSearchSubmit = (e) => { e.preventDefault(); load(); };
+
+  const onSave = async () => {
+    if (!editing) return;
+    const payload = { ...editing };
+    // Trim choices
+    payload.choices = payload.choices.map(c => (c || '').trim());
+    payload.choices_ar = payload.choices_ar.map(c => (c || '').trim());
+    if (!payload.question.trim() || !payload.question_ar.trim()) {
+      return toast.error(isAr ? 'الرجاء إدخال السؤال بالعربية والإنجليزية' : 'Question text required');
+    }
+    if (payload.choices.some(c => !c) || payload.choices_ar.some(c => !c)) {
+      return toast.error(isAr ? 'الرجاء إدخال جميع الخيارات' : 'All 4 choices required');
+    }
+    setBusy(true);
+    try {
+      if (editing.id) {
+        await adminTriviaUpdate(editing.id, payload);
+      } else {
+        await adminTriviaCreate(payload);
+      }
+      toast.success(t('trivia.adminSaved'));
+      setEditing(null);
+      await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Error');
+    } finally { setBusy(false); }
+  };
+
+  const onDelete = async (item) => {
+    if (!window.confirm(t('trivia.adminConfirmDelete'))) return;
+    try {
+      await adminTriviaDelete(item.id);
+      toast.success(t('trivia.adminDeleted'));
+      await load();
+    } catch { toast.error('Error'); }
+  };
+
+  const onToggle = async (item) => {
+    try {
+      await adminTriviaToggle(item.id);
+      await load();
+    } catch { toast.error('Error'); }
+  };
+
+  return (
+    <div className="space-y-5" data-testid="admin-trivia-tab">
+      {/* Header & stats */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-xl font-black tracking-tight flex items-center gap-2">
+            <Brain className="w-5 h-5 text-pink-400" />
+            {t('trivia.adminTitle')}
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">{t('trivia.adminDesc')}</p>
+        </div>
+        <Button onClick={() => setEditing({ ...emptyQ })} data-testid="trivia-admin-add-btn" className="bg-pink-500 hover:bg-pink-400 text-white font-bold">
+          <Plus className="w-4 h-4" /> {t('trivia.adminAdd')}
+        </Button>
+      </div>
+
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <SmallStat label={isAr ? 'إجمالي الأسئلة' : 'Total Questions'} value={stats.questions.total} color="pink-400" />
+          <SmallStat label={isAr ? 'الفعّالة' : 'Active'} value={stats.questions.active} color="emerald-300" />
+          <SmallStat label={isAr ? 'إجمالي المحاولات' : 'Total Attempts'} value={stats.attempts} color="ncc-teal" />
+          <SmallStat label={isAr ? 'الجلسات' : 'Sessions'} value={stats.sessions.total} color="gold" />
+        </div>
+      )}
+
+      {/* Filters */}
+      <form onSubmit={onSearchSubmit} className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search className={`absolute top-1/2 -translate-y-1/2 ${isAr ? 'right-3' : 'left-3'} w-4 h-4 text-slate-400 pointer-events-none`} />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('trivia.adminSearch')} data-testid="trivia-admin-search"
+            className={`bg-bg-card border-white/10 text-white h-10 ${isAr ? 'pr-10' : 'pl-10'}`} />
+        </div>
+        <select value={type} onChange={(e) => setType(e.target.value)}
+          className="bg-bg-card border border-white/10 text-white h-10 px-3 rounded text-sm">
+          <option value="">{t('trivia.adminType')}: {t('trivia.adminFilterAll')}</option>
+          <option value="text">{t('trivia.adminTypeText')}</option>
+          <option value="image_face">{t('trivia.adminTypeImage')}</option>
+          <option value="image_jersey">{t('trivia.adminTypeImageJersey')}</option>
+          <option value="image_trophy">{t('trivia.adminTypeImageTrophy')}</option>
+        </select>
+        <select value={active} onChange={(e) => setActive(e.target.value)}
+          className="bg-bg-card border border-white/10 text-white h-10 px-3 rounded text-sm">
+          <option value="">{t('trivia.adminActive')}: {t('trivia.adminFilterAll')}</option>
+          <option value="true">✓</option>
+          <option value="false">✗</option>
+        </select>
+        <Button type="submit" className="bg-purple-500 hover:bg-purple-400 text-white font-bold h-10">
+          {isAr ? 'بحث' : 'Search'}
+        </Button>
+      </form>
+
+      <div className="text-xs text-slate-500">{items.length} {isAr ? 'سؤال' : 'questions'}</div>
+
+      {/* Table */}
+      <div className="overflow-x-auto rounded-xl border border-white/10 bg-bg-card/60">
+        <table className="w-full text-sm">
+          <thead className="bg-white/5">
+            <tr>
+              <Th>{t('trivia.adminQuestionAr')}</Th>
+              <Th className="text-center">{t('trivia.adminType')}</Th>
+              <Th className="text-center">{t('trivia.adminDifficulty')}</Th>
+              <Th className="text-center">{t('trivia.adminCategory')}</Th>
+              <Th className="text-center">{t('trivia.adminActive')}</Th>
+              <Th className="text-right">{t('admin.colActions')}</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(q => (
+              <tr key={q.id} className="border-t border-white/5" data-testid={`trivia-row-${q.id}`}>
+                <td className="px-3 py-3 max-w-md">
+                  <div className="font-bold truncate">{q.question_ar}</div>
+                  <div className="text-xs text-slate-500 truncate">{q.question}</div>
+                </td>
+                <td className="px-3 py-3 text-center text-xs">
+                  {q.type === 'text' ? '📝' : '🖼️'} <span className="text-slate-400">{q.type.replace('image_', '')}</span>
+                </td>
+                <td className="px-3 py-3 text-center text-xs">
+                  <span className={`px-2 py-0.5 rounded font-bold ${q.difficulty === 'hard' ? 'bg-red-500/20 text-red-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                    {q.difficulty}
+                  </span>
+                </td>
+                <td className="px-3 py-3 text-center text-xs text-slate-300">{q.category}</td>
+                <td className="px-3 py-3 text-center">
+                  <button onClick={() => onToggle(q)} data-testid={`trivia-toggle-${q.id}`}
+                    className={`p-1.5 rounded ${q.active ? 'text-emerald-300 hover:bg-emerald-500/10' : 'text-slate-500 hover:bg-white/5'}`}>
+                    <Power className="w-4 h-4" />
+                  </button>
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <button onClick={() => setEditing({ ...q })} data-testid={`trivia-edit-${q.id}`}
+                    className="p-2 text-ncc-teal hover:bg-ncc-teal/10 rounded">
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => onDelete(q)} data-testid={`trivia-delete-${q.id}`}
+                    className="p-2 text-red-400 hover:bg-red-500/10 rounded">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && (
+              <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-500">{isAr ? 'لا توجد أسئلة' : 'No questions'}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Edit modal */}
+      {editing && (
+        <TriviaEditDialog
+          item={editing}
+          onChange={setEditing}
+          onClose={() => setEditing(null)}
+          onSave={onSave}
+          busy={busy}
+        />
+      )}
+    </div>
+  );
+};
+
+const SmallStat = ({ label, value, color }) => (
+  <div className={`glass rounded-xl p-4 border border-${color}/30`}>
+    <div className={`text-xs uppercase tracking-widest text-${color} font-bold mb-1`}>{label}</div>
+    <div className="text-2xl font-black">{value}</div>
+  </div>
+);
+
+const TriviaEditDialog = ({ item, onChange, onClose, onSave, busy }) => {
+  const { t, isAr } = useI18n();
+  const setField = (k, v) => onChange({ ...item, [k]: v });
+  const setChoice = (lang, i, v) => {
+    const arr = [...item[lang]];
+    arr[i] = v;
+    onChange({ ...item, [lang]: arr });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4 overflow-y-auto" data-testid="trivia-edit-dialog">
+      <div className="bg-bg-card border border-pink-400/30 rounded-2xl max-w-3xl w-full p-6 my-8 shadow-2xl shadow-pink-500/10">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
+            <Brain className="w-5 h-5 text-pink-400" />
+            {item.id ? t('trivia.adminEdit') : t('trivia.adminAdd')}
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Questions */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-slate-400">{t('trivia.adminQuestionAr')}</Label>
+              <Input value={item.question_ar} onChange={(e) => setField('question_ar', e.target.value)}
+                data-testid="trivia-edit-question-ar"
+                dir="rtl" className="bg-bg-base border-white/10 text-white mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-slate-400">{t('trivia.adminQuestionEn')}</Label>
+              <Input value={item.question} onChange={(e) => setField('question', e.target.value)}
+                data-testid="trivia-edit-question-en"
+                className="bg-bg-base border-white/10 text-white mt-1" />
+            </div>
+          </div>
+
+          {/* Type / Difficulty / Category */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-slate-400">{t('trivia.adminType')}</Label>
+              <select value={item.type} onChange={(e) => setField('type', e.target.value)}
+                className="bg-bg-base border border-white/10 text-white h-10 px-3 rounded w-full mt-1 text-sm">
+                <option value="text">{t('trivia.adminTypeText')}</option>
+                <option value="image_face">{t('trivia.adminTypeImage')}</option>
+                <option value="image_jersey">{t('trivia.adminTypeImageJersey')}</option>
+                <option value="image_trophy">{t('trivia.adminTypeImageTrophy')}</option>
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-slate-400">{t('trivia.adminDifficulty')}</Label>
+              <select value={item.difficulty} onChange={(e) => setField('difficulty', e.target.value)}
+                className="bg-bg-base border border-white/10 text-white h-10 px-3 rounded w-full mt-1 text-sm">
+                <option value="medium">{t('trivia.adminDiffMedium')}</option>
+                <option value="hard">{t('trivia.adminDiffHard')}</option>
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-slate-400">{t('trivia.adminCategory')}</Label>
+              <select value={item.category} onChange={(e) => setField('category', e.target.value)}
+                className="bg-bg-base border border-white/10 text-white h-10 px-3 rounded w-full mt-1 text-sm">
+                <option value="players">players</option>
+                <option value="tournaments">tournaments</option>
+                <option value="records">records</option>
+                <option value="general">general</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Image URL */}
+          {item.type !== 'text' && (
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-slate-400 flex items-center gap-1">
+                <ImageIcon className="w-3.5 h-3.5" />
+                {t('trivia.adminImageUrl')}
+              </Label>
+              <Input value={item.image_url} onChange={(e) => setField('image_url', e.target.value)}
+                placeholder="https://..."
+                data-testid="trivia-edit-image-url"
+                className="bg-bg-base border-white/10 text-white mt-1" />
+              {item.image_url && (
+                <img src={item.image_url} alt="preview" className="mt-2 max-h-32 rounded border border-white/10" />
+              )}
+            </div>
+          )}
+
+          {/* Choices */}
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-slate-400">{t('trivia.adminChoicesAr')}</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+              {item.choices_ar.map((c, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input type="radio" checked={item.correct_index === i}
+                    onChange={() => setField('correct_index', i)}
+                    data-testid={`trivia-edit-correct-${i}`}
+                    className="accent-emerald-400" />
+                  <Input value={c} dir="rtl" onChange={(e) => setChoice('choices_ar', i, e.target.value)}
+                    data-testid={`trivia-edit-choice-ar-${i}`}
+                    placeholder={`${String.fromCharCode(65 + i)}`}
+                    className="bg-bg-base border-white/10 text-white" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-slate-400">{t('trivia.adminChoicesEn')}</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+              {item.choices.map((c, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className={`w-7 h-7 grid place-items-center rounded text-xs font-black ${item.correct_index === i ? 'bg-emerald-400 text-bg-base' : 'bg-white/10 text-slate-300'}`}>{String.fromCharCode(65 + i)}</span>
+                  <Input value={c} onChange={(e) => setChoice('choices', i, e.target.value)}
+                    data-testid={`trivia-edit-choice-en-${i}`}
+                    className="bg-bg-base border-white/10 text-white" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Explanation */}
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-slate-400">{t('trivia.adminExplanationAr')}</Label>
+            <Input value={item.explanation_ar || ''} dir="rtl"
+              onChange={(e) => setField('explanation_ar', e.target.value)}
+              data-testid="trivia-edit-explanation-ar"
+              className="bg-bg-base border-white/10 text-white mt-1" />
+          </div>
+
+          {/* Active */}
+          <label className="flex items-center gap-2 text-sm font-bold text-slate-300 cursor-pointer">
+            <input type="checkbox" checked={item.active} onChange={(e) => setField('active', e.target.checked)}
+              data-testid="trivia-edit-active" className="accent-emerald-400" />
+            {t('trivia.adminActive')}
+          </label>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <Button variant="outline" onClick={onClose} className="border-white/20 text-slate-300 hover:bg-white/5">
+            {t('trivia.adminCancel')}
+          </Button>
+          <Button onClick={onSave} disabled={busy} data-testid="trivia-edit-save-btn"
+            className="bg-pink-500 hover:bg-pink-400 text-white font-bold">
+            <Save className="w-4 h-4" /> {t('trivia.adminSave')}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

@@ -17,7 +17,10 @@ export const Header = () => {
     { to: '/matches', label: t('nav.matches') },
     { to: '/leaderboard', label: t('nav.leaderboard') },
   ];
-  if (user) navLinks.splice(2, 0, { to: '/my-predictions', label: t('nav.myPredictions') });
+  if (user) {
+    navLinks.splice(2, 0, { to: '/my-predictions', label: t('nav.myPredictions') });
+    navLinks.push({ to: '/trivia', label: t('trivia.navLabel'), highlight: true });
+  }
 
   return (
     <header className="sticky top-0 z-50 glass border-b border-white/5" data-testid="app-header">
@@ -43,11 +46,12 @@ export const Header = () => {
               className={({ isActive }) =>
                 `px-4 py-2 text-sm font-semibold rounded-md transition-all ${
                   isActive
-                    ? 'text-ncc-teal bg-white/5'
-                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    ? (l.highlight ? 'text-purple-200 bg-purple-500/15' : 'text-ncc-teal bg-white/5')
+                    : (l.highlight ? 'text-purple-300 hover:text-purple-200 hover:bg-purple-500/10' : 'text-slate-300 hover:text-white hover:bg-white/5')
                 }`
               }
             >
+              {l.highlight && <span className="mr-1">✨</span>}
               {l.label}
             </NavLink>
           ))}
